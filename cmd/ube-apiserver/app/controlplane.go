@@ -31,6 +31,7 @@ import (
 
 	_ "k8s.io/kubernetes/pkg/apis/controlplane/install"
 	clusteretcd "k8s.io/kubernetes/pkg/registry/cluster/etcd"
+	subcontrolleretcd "k8s.io/kubernetes/pkg/registry/subcontroller/etcd"
 )
 
 func addControlplaneAPIGroup(d genericapiserver.StorageDestinations, s *options.APIServer) {
@@ -57,20 +58,25 @@ func addControlplaneAPIGroup(d genericapiserver.StorageDestinations, s *options.
 	d.AddAPIGroup(controlplane.GroupName, controlplaneEtcdStorage)
 }
 
-func installClusterAPI(m *master.Master, d genericapiserver.StorageDestinations) {
+func installControlplaneAPI(m *master.Master, d genericapiserver.StorageDestinations) {
 	clusterStorage, clusterStatusStorage := clusteretcd.NewREST(generic.RESTOptions{
 		Storage:   d.Get(controlplane.GroupName, "clusters"),
 		Decorator: m.StorageDecorator(),
 	})
-	clusterResources := map[string]rest.Storage{
-		"clusters":        clusterStorage,
-		"clusters/status": clusterStatusStorage,
+	subcontrollerStorage, subcontrollerStatusStorage := subcontrolleretcd.NewREST(generic.RESTOptions{
+		Storage:   d.Get(controlplane.GroupName, "subcontrollers"),
+		Decorator: m.StorageDecorator(),
+	})
+	controlplaneResources := map[string]rest.Storage{
+		"clusters":              clusterStorage,
+		"clusters/status":       clusterStatusStorage,
+		"subcontrollers":        subcontrollerStorage,
+		"subcontrollers/status": subcontrollerStatusStorage,
 	}
-	clusterGroupMeta := registered.GroupOrDie(controlplane.GroupName)
 	apiGroupInfo := genericapiserver.APIGroupInfo{
-		GroupMeta: *clusterGroupMeta,
+		GroupMeta: *registered.GroupOrDie(controlplane.GroupName),
 		VersionedResourcesStorageMap: map[string]map[string]rest.Storage{
-			"v1alpha1": clusterResources,
+			"v1alpha1": controlplaneResources,
 		},
 		OptionsExternalVersion: &registered.GroupOrDie(api.GroupName).GroupVersion,
 		Scheme:                 api.Scheme,

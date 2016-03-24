@@ -492,7 +492,7 @@ func Run(s *options.APIServer) error {
 	}
 
 	addControlplaneAPIGroup(storageDestinations, s)
-	installClusterAPI(m, storageDestinations)
+	installControlplaneAPI(m, storageDestinations)
 
 	m.Run(s.ServerRunOptions)
 	return nil
