@@ -33,8 +33,12 @@ func init() {
 		DeepCopy_v1alpha1_ClusterAddress,
 		DeepCopy_v1alpha1_ClusterList,
 		DeepCopy_v1alpha1_ClusterMeta,
+		DeepCopy_v1alpha1_ClusterSelectionSpec,
 		DeepCopy_v1alpha1_ClusterSpec,
 		DeepCopy_v1alpha1_ClusterStatus,
+		DeepCopy_v1alpha1_SubReplicationController,
+		DeepCopy_v1alpha1_SubReplicationControllerList,
+		DeepCopy_v1alpha1_SubReplicationControllerSpec,
 	); err != nil {
 		// if one of the deep copy functions is malformed, detect it immediately.
 		panic(err)
@@ -88,6 +92,20 @@ func DeepCopy_v1alpha1_ClusterMeta(in ClusterMeta, out *ClusterMeta, c *conversi
 	return nil
 }
 
+func DeepCopy_v1alpha1_ClusterSelectionSpec(in ClusterSelectionSpec, out *ClusterSelectionSpec, c *conversion.Cloner) error {
+	out.Name = in.Name
+	if in.Selector != nil {
+		in, out := in.Selector, &out.Selector
+		*out = make(map[string]string)
+		for key, val := range in {
+			(*out)[key] = val
+		}
+	} else {
+		out.Selector = nil
+	}
+	return nil
+}
+
 func DeepCopy_v1alpha1_ClusterSpec(in ClusterSpec, out *ClusterSpec, c *conversion.Cloner) error {
 	if err := DeepCopy_v1alpha1_ClusterAddress(in.Address, &out.Address, c); err != nil {
 		return err
@@ -112,5 +130,52 @@ func DeepCopy_v1alpha1_ClusterStatus(in ClusterStatus, out *ClusterStatus, c *co
 		out.Capacity = nil
 	}
 	out.ClusterMeta = in.ClusterMeta
+	return nil
+}
+
+func DeepCopy_v1alpha1_SubReplicationController(in SubReplicationController, out *SubReplicationController, c *conversion.Cloner) error {
+	if err := unversioned.DeepCopy_unversioned_TypeMeta(in.TypeMeta, &out.TypeMeta, c); err != nil {
+		return err
+	}
+	if err := api.DeepCopy_api_ObjectMeta(in.ObjectMeta, &out.ObjectMeta, c); err != nil {
+		return err
+	}
+	if err := DeepCopy_v1alpha1_SubReplicationControllerSpec(in.Spec, &out.Spec, c); err != nil {
+		return err
+	}
+	if err := api.DeepCopy_api_ReplicationControllerStatus(in.Status, &out.Status, c); err != nil {
+		return err
+	}
+	return nil
+}
+
+func DeepCopy_v1alpha1_SubReplicationControllerList(in SubReplicationControllerList, out *SubReplicationControllerList, c *conversion.Cloner) error {
+	if err := unversioned.DeepCopy_unversioned_TypeMeta(in.TypeMeta, &out.TypeMeta, c); err != nil {
+		return err
+	}
+	if err := unversioned.DeepCopy_unversioned_ListMeta(in.ListMeta, &out.ListMeta, c); err != nil {
+		return err
+	}
+	if in.Items != nil {
+		in, out := in.Items, &out.Items
+		*out = make([]SubReplicationController, len(in))
+		for i := range in {
+			if err := DeepCopy_v1alpha1_SubReplicationController(in[i], &(*out)[i], c); err != nil {
+				return err
+			}
+		}
+	} else {
+		out.Items = nil
+	}
+	return nil
+}
+
+func DeepCopy_v1alpha1_SubReplicationControllerSpec(in SubReplicationControllerSpec, out *SubReplicationControllerSpec, c *conversion.Cloner) error {
+	if err := api.DeepCopy_api_ReplicationControllerSpec(in.ReplicationControllerSpec, &out.ReplicationControllerSpec, c); err != nil {
+		return err
+	}
+	if err := DeepCopy_v1alpha1_ClusterSelectionSpec(in.Cluster, &out.Cluster, c); err != nil {
+		return err
+	}
 	return nil
 }

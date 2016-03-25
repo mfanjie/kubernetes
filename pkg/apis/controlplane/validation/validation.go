@@ -43,3 +43,35 @@ func ValidateClusterUpdate(cluster, oldCluster *controlplane.Cluster) field.Erro
 
 	return allErrs
 }
+
+func ValidateClusterSelectorSpec(cluster *controlplane.ClusterSelectionSpec, fldPath *field.Path) field.ErrorList {
+	allErrs := field.ErrorList{}
+	if ok, qualifier := ValidateClusterName(cluster.Name, false); !ok {
+		allErrs = append(allErrs, field.Invalid(fldPath.Child("name"), cluster.Name, qualifier))
+	}
+	allErrs = append(allErrs, validation.ValidateLabels(cluster.Selector, fldPath.Child("selector"))...)
+	return allErrs
+}
+
+func ValidateSubReplicationController(controller *controlplane.SubReplicationController) field.ErrorList {
+	allErrs := validation.ValidateObjectMeta(&controller.ObjectMeta, true, validation.ValidateReplicationControllerName, field.NewPath("metadata"))
+	allErrs = append(allErrs, validation.ValidateReplicationControllerSpec(&controller.Spec.ReplicationControllerSpec, field.NewPath("spec"))...)
+	allErrs = append(allErrs, ValidateClusterSelectorSpec(&controller.Spec.Cluster, field.NewPath("spec", "cluster"))...)
+	return allErrs
+}
+
+func ValidateSubReplicationControllerUpdate(controller, oldController *controlplane.SubReplicationController) field.ErrorList {
+	allErrs := validation.ValidateObjectMetaUpdate(&controller.ObjectMeta, &oldController.ObjectMeta, field.NewPath("metadata"))
+	allErrs = append(allErrs, validation.ValidateReplicationControllerSpec(&controller.Spec.ReplicationControllerSpec, field.NewPath("spec"))...)
+	allErrs = append(allErrs, ValidateClusterSelectorSpec(&controller.Spec.Cluster, field.NewPath("spec", "cluster"))...)
+	return allErrs
+}
+
+func ValidateSubReplicationControllerStatusUpdate(controller, oldController *controlplane.SubReplicationController) field.ErrorList {
+	allErrs := validation.ValidateObjectMetaUpdate(&controller.ObjectMeta, &oldController.ObjectMeta, field.NewPath("metadata"))
+	statusPath := field.NewPath("status")
+	allErrs = append(allErrs, validation.ValidateNonnegativeField(int64(controller.Status.Replicas), statusPath.Child("replicas"))...)
+	allErrs = append(allErrs, validation.ValidateNonnegativeField(int64(controller.Status.FullyLabeledReplicas), statusPath.Child("fullyLabeledReplicas"))...)
+	allErrs = append(allErrs, validation.ValidateNonnegativeField(int64(controller.Status.ObservedGeneration), statusPath.Child("observedGeneration"))...)
+	return allErrs
+}

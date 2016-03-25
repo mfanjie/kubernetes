@@ -47,10 +47,14 @@ func addKnownTypes(scheme *runtime.Scheme) {
 	scheme.AddKnownTypes(SchemeGroupVersion,
 		&Cluster{},
 		&ClusterList{},
+		&SubReplicationController{},
+		&SubReplicationControllerList{},
 		&api.ListOptions{},
 		&api.DeleteOptions{},
 	)
 }
 
-func (obj *Cluster) GetObjectKind() unversioned.ObjectKind     { return &obj.TypeMeta }
-func (obj *ClusterList) GetObjectKind() unversioned.ObjectKind { return &obj.TypeMeta }
+func (obj *Cluster) GetObjectKind() unversioned.ObjectKind                      { return &obj.TypeMeta }
+func (obj *ClusterList) GetObjectKind() unversioned.ObjectKind                  { return &obj.TypeMeta }
+func (obj *SubReplicationController) GetObjectKind() unversioned.ObjectKind     { return &obj.TypeMeta }
+func (obj *SubReplicationControllerList) GetObjectKind() unversioned.ObjectKind { return &obj.TypeMeta }

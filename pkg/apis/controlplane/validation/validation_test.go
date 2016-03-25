@@ -17,6 +17,7 @@ limitations under the License.
 package validation
 
 import (
+	"strings"
 	"testing"
 
 	"k8s.io/kubernetes/pkg/api"
@@ -101,6 +102,121 @@ func TestValidateClusterUpdate(t *testing.T) {
 		errs := ValidateClusterUpdate(&errorCase.update, &errorCase.old)
 		if len(errs) == 0 {
 			t.Errorf("expected failure: %s", testName)
+		}
+	}
+}
+
+func TestValidateReplicationController(t *testing.T) {
+	validSelector := map[string]string{"a": "b"}
+	validPodTemplate := api.PodTemplate{
+		Template: api.PodTemplateSpec{
+			ObjectMeta: api.ObjectMeta{
+				Labels: validSelector,
+			},
+			Spec: api.PodSpec{
+				RestartPolicy: api.RestartPolicyAlways,
+				DNSPolicy:     api.DNSClusterFirst,
+				Containers:    []api.Container{{Name: "abc", Image: "image", ImagePullPolicy: "IfNotPresent"}},
+			},
+		},
+	}
+	readWriteVolumePodTemplate := api.PodTemplate{
+		Template: api.PodTemplateSpec{
+			ObjectMeta: api.ObjectMeta{
+				Labels: validSelector,
+			},
+			Spec: api.PodSpec{
+				Volumes:       []api.Volume{{Name: "gcepd", VolumeSource: api.VolumeSource{GCEPersistentDisk: &api.GCEPersistentDiskVolumeSource{PDName: "my-PD", FSType: "ext4", Partition: 1, ReadOnly: false}}}},
+				RestartPolicy: api.RestartPolicyAlways,
+				DNSPolicy:     api.DNSClusterFirst,
+				Containers:    []api.Container{{Name: "abc", Image: "image", ImagePullPolicy: "IfNotPresent"}},
+			},
+		},
+	}
+	successCases := []controlplane.SubReplicationController{
+		{
+			ObjectMeta: api.ObjectMeta{Name: "abc", Namespace: api.NamespaceDefault},
+			Spec: controlplane.SubReplicationControllerSpec{
+				ReplicationControllerSpec: api.ReplicationControllerSpec{
+					Selector: validSelector,
+					Template: &validPodTemplate.Template,
+				},
+				Cluster: controlplane.ClusterSelectionSpec{
+					Name:     "def",
+					Selector: map[string]string{"a": "b"},
+				},
+			},
+		},
+		{
+			ObjectMeta: api.ObjectMeta{Name: "abc-123", Namespace: api.NamespaceDefault},
+			Spec: controlplane.SubReplicationControllerSpec{
+				ReplicationControllerSpec: api.ReplicationControllerSpec{
+					Replicas: 1,
+					Selector: validSelector,
+					Template: &readWriteVolumePodTemplate.Template,
+				},
+				Cluster: controlplane.ClusterSelectionSpec{
+					Name:     "def",
+					Selector: map[string]string{"a": "b"},
+				},
+			},
+		},
+	}
+	for _, successCase := range successCases {
+		if errs := ValidateSubReplicationController(&successCase); len(errs) != 0 {
+			t.Errorf("expected success: %v", errs)
+		}
+	}
+
+	errorCases := map[string]controlplane.SubReplicationController{
+		"invalid-cluster-name": {
+			ObjectMeta: api.ObjectMeta{Name: "abc", Namespace: api.NamespaceDefault},
+			Spec: controlplane.SubReplicationControllerSpec{
+				ReplicationControllerSpec: api.ReplicationControllerSpec{
+					Selector: validSelector,
+					Template: &validPodTemplate.Template,
+				},
+				Cluster: controlplane.ClusterSelectionSpec{
+					Name: "asdf+b",
+				},
+			},
+		},
+		"invalid-cluster-selector": {
+			ObjectMeta: api.ObjectMeta{Name: "abc", Namespace: api.NamespaceDefault},
+			Spec: controlplane.SubReplicationControllerSpec{
+				ReplicationControllerSpec: api.ReplicationControllerSpec{
+					Selector: validSelector,
+					Template: &validPodTemplate.Template,
+				},
+				Cluster: controlplane.ClusterSelectionSpec{
+					Name:     "asdf",
+					Selector: map[string]string{"a+.": "b"},
+				},
+			},
+		},
+	}
+	for k, v := range errorCases {
+		errs := ValidateSubReplicationController(&v)
+		if len(errs) == 0 {
+			t.Errorf("expected failure for %s", k)
+		}
+		for i := range errs {
+			field := errs[i].Field
+			if !strings.HasPrefix(field, "spec.template.") &&
+				field != "metadata.name" &&
+				field != "metadata.namespace" &&
+				field != "spec.selector" &&
+				field != "spec.template" &&
+				field != "GCEPersistentDisk.ReadOnly" &&
+				field != "spec.replicas" &&
+				field != "spec.template.labels" &&
+				field != "metadata.annotations" &&
+				field != "metadata.labels" &&
+				field != "status.replicas" &&
+				field != "spec.cluster.name" &&
+				field != "spec.cluster.selector" {
+				t.Errorf("%s: missing prefix for: %v", k, errs[i])
+			}
 		}
 	}
 }

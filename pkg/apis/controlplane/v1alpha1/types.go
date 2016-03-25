@@ -89,3 +89,44 @@ type ClusterList struct {
 	// List of Cluster objects.
 	Items []Cluster `json:"items"`
 }
+
+// ClusterSelectionSpec is the specification of selecting clusters
+type ClusterSelectionSpec struct {
+	// name of the cluster
+	Name string `json:"name,omitempty"`
+	// Selector is a label query over clusters
+	Selector map[string]string `json:"selector,omitempty"`
+	// And any other cluster specific information we might want in the future.
+}
+
+// SubReplicationControllerSpec is the specification of a sub replication controller.
+type SubReplicationControllerSpec struct {
+	// Spec defines the desired behavior of this replication controller.
+	api.ReplicationControllerSpec `json:",inline"`
+	// Specifies which cluster(s) that this sub replication controller should be scheduled to
+	Cluster ClusterSelectionSpec `json:"cluster"`
+}
+
+// SubReplicationController is a ReplicationController that scheduled from u7s to a k8s cluster
+type SubReplicationController struct {
+	unversioned.TypeMeta `json:",inline"`
+	api.ObjectMeta       `json:"metadata,omitempty"`
+
+	// Spec defines the desired behavior of this replication controller.
+	Spec SubReplicationControllerSpec `json:"spec,omitempty"`
+
+	// Status is the current status of this replication controller. This data may be
+	// out of date by some window of time.
+	Status api.ReplicationControllerStatus `json:"status,omitempty"`
+}
+
+// A list of SubReplicationControllers
+type SubReplicationControllerList struct {
+	unversioned.TypeMeta `json:",inline"`
+	// Standard list metadata.
+	// More info: http://releases.k8s.io/HEAD/docs/devel/api-conventions.md#types-kinds
+	unversioned.ListMeta `json:"metadata,omitempty"`
+
+	// List of SubReplicationController objects.
+	Items []SubReplicationController `json:"items"`
+}

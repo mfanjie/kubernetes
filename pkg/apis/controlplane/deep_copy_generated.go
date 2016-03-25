@@ -33,8 +33,12 @@ func init() {
 		DeepCopy_controlplane_ClusterAddress,
 		DeepCopy_controlplane_ClusterList,
 		DeepCopy_controlplane_ClusterMeta,
+		DeepCopy_controlplane_ClusterSelectionSpec,
 		DeepCopy_controlplane_ClusterSpec,
 		DeepCopy_controlplane_ClusterStatus,
+		DeepCopy_controlplane_SubReplicationController,
+		DeepCopy_controlplane_SubReplicationControllerList,
+		DeepCopy_controlplane_SubReplicationControllerSpec,
 	); err != nil {
 		// if one of the deep copy functions is malformed, detect it immediately.
 		panic(err)
@@ -88,6 +92,20 @@ func DeepCopy_controlplane_ClusterMeta(in ClusterMeta, out *ClusterMeta, c *conv
 	return nil
 }
 
+func DeepCopy_controlplane_ClusterSelectionSpec(in ClusterSelectionSpec, out *ClusterSelectionSpec, c *conversion.Cloner) error {
+	out.Name = in.Name
+	if in.Selector != nil {
+		in, out := in.Selector, &out.Selector
+		*out = make(map[string]string)
+		for key, val := range in {
+			(*out)[key] = val
+		}
+	} else {
+		out.Selector = nil
+	}
+	return nil
+}
+
 func DeepCopy_controlplane_ClusterSpec(in ClusterSpec, out *ClusterSpec, c *conversion.Cloner) error {
 	if err := DeepCopy_controlplane_ClusterAddress(in.Address, &out.Address, c); err != nil {
 		return err
@@ -112,5 +130,52 @@ func DeepCopy_controlplane_ClusterStatus(in ClusterStatus, out *ClusterStatus, c
 		out.Capacity = nil
 	}
 	out.ClusterMeta = in.ClusterMeta
+	return nil
+}
+
+func DeepCopy_controlplane_SubReplicationController(in SubReplicationController, out *SubReplicationController, c *conversion.Cloner) error {
+	if err := unversioned.DeepCopy_unversioned_TypeMeta(in.TypeMeta, &out.TypeMeta, c); err != nil {
+		return err
+	}
+	if err := api.DeepCopy_api_ObjectMeta(in.ObjectMeta, &out.ObjectMeta, c); err != nil {
+		return err
+	}
+	if err := DeepCopy_controlplane_SubReplicationControllerSpec(in.Spec, &out.Spec, c); err != nil {
+		return err
+	}
+	if err := api.DeepCopy_api_ReplicationControllerStatus(in.Status, &out.Status, c); err != nil {
+		return err
+	}
+	return nil
+}
+
+func DeepCopy_controlplane_SubReplicationControllerList(in SubReplicationControllerList, out *SubReplicationControllerList, c *conversion.Cloner) error {
+	if err := unversioned.DeepCopy_unversioned_TypeMeta(in.TypeMeta, &out.TypeMeta, c); err != nil {
+		return err
+	}
+	if err := unversioned.DeepCopy_unversioned_ListMeta(in.ListMeta, &out.ListMeta, c); err != nil {
+		return err
+	}
+	if in.Items != nil {
+		in, out := in.Items, &out.Items
+		*out = make([]SubReplicationController, len(in))
+		for i := range in {
+			if err := DeepCopy_controlplane_SubReplicationController(in[i], &(*out)[i], c); err != nil {
+				return err
+			}
+		}
+	} else {
+		out.Items = nil
+	}
+	return nil
+}
+
+func DeepCopy_controlplane_SubReplicationControllerSpec(in SubReplicationControllerSpec, out *SubReplicationControllerSpec, c *conversion.Cloner) error {
+	if err := api.DeepCopy_api_ReplicationControllerSpec(in.ReplicationControllerSpec, &out.ReplicationControllerSpec, c); err != nil {
+		return err
+	}
+	if err := DeepCopy_controlplane_ClusterSelectionSpec(in.Cluster, &out.Cluster, c); err != nil {
+		return err
+	}
 	return nil
 }
