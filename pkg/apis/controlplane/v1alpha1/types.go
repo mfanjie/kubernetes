@@ -107,6 +107,8 @@ type SubReplicationControllerSpec struct {
 	Cluster ClusterSelectionSpec `json:"cluster"`
 }
 
+// +genclient=true
+
 // SubReplicationController is a ReplicationController that scheduled from u7s to a k8s cluster
 type SubReplicationController struct {
 	unversioned.TypeMeta `json:",inline"`

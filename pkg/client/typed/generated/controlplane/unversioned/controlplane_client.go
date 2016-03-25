@@ -26,6 +26,7 @@ import (
 
 type ControlplaneInterface interface {
 	ClustersGetter
+	SubReplicationControllersGetter
 }
 
 // ControlplaneClient is used to interact with features provided by the Controlplane group.
@@ -35,6 +36,10 @@ type ControlplaneClient struct {
 
 func (c *ControlplaneClient) Clusters() ClusterInterface {
 	return newClusters(c)
+}
+
+func (c *ControlplaneClient) SubReplicationControllers(namespace string) SubReplicationControllerInterface {
+	return newSubReplicationControllers(c, namespace)
 }
 
 // NewForConfig creates a new ControlplaneClient for the given config.

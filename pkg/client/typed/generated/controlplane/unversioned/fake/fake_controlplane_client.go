@@ -30,3 +30,7 @@ type FakeControlplane struct {
 func (c *FakeControlplane) Clusters() unversioned.ClusterInterface {
 	return &FakeClusters{c}
 }
+
+func (c *FakeControlplane) SubReplicationControllers(namespace string) unversioned.SubReplicationControllerInterface {
+	return &FakeSubReplicationControllers{c, namespace}
+}
