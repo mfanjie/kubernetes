@@ -28,6 +28,7 @@ import (
 
 	"github.com/golang/glog"
 	flag "github.com/spf13/pflag"
+	"strings"
 )
 
 var (
@@ -39,21 +40,33 @@ var (
 	fakeClient    = flag.Bool("fake-clientset", true, "when set, client-gen will generate the fake clientset that can be used in tests")
 )
 
-func versionToPath(group string, version string) (path string) {
+func versionToPath(gvPath string, group string, version string) (path string) {
 	const base = "k8s.io/kubernetes/pkg"
 	// special case for the core group
 	if group == "api" {
 		path = filepath.Join(base, "api", version)
 	} else {
-		path = filepath.Join(base, "apis", group, version)
+		path = filepath.Join(base, "apis", gvPath, group, version)
 	}
 	return
+}
+
+func parsePathGroupVersion(pgvString string) (gvPath string, gvString string) {
+	subs := strings.Split(pgvString, "/")
+	length := len(subs)
+	switch length {
+	case 0, 1, 2:
+		return "", pgvString
+	default:
+		return strings.Join(subs[:length-2], "/"), strings.Join(subs[length-2:], "/")
+	}
 }
 
 func parseInputVersions() (paths []string, groupVersions []unversioned.GroupVersion, gvToPath map[unversioned.GroupVersion]string, err error) {
 	var visitedGroups = make(map[string]struct{})
 	gvToPath = make(map[unversioned.GroupVersion]string)
 	for _, gvString := range *inputVersions {
+		gvPath, gvString := parsePathGroupVersion(gvString)
 		gv, err := unversioned.ParseGroupVersion(gvString)
 		if err != nil {
 			return nil, nil, nil, err
@@ -64,7 +77,7 @@ func parseInputVersions() (paths []string, groupVersions []unversioned.GroupVers
 		}
 		visitedGroups[gv.Group] = struct{}{}
 		groupVersions = append(groupVersions, gv)
-		path := versionToPath(gv.Group, gv.Version)
+		path := versionToPath(gvPath, gv.Group, gv.Version)
 		paths = append(paths, path)
 		gvToPath[gv] = path
 	}
@@ -122,6 +135,8 @@ func main() {
 			*fakeClient,
 			cmdArgs,
 		}
+
+		fmt.Printf("==arguments: %v\n", arguments)
 	}
 
 	if err := arguments.Execute(
