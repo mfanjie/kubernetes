@@ -30,3 +30,7 @@ type FakeFederation struct {
 func (c *FakeFederation) Clusters() unversioned.ClusterInterface {
 	return &FakeClusters{c}
 }
+
+func (c *FakeFederation) SubReplicaSets(namespace string) unversioned.SubReplicaSetInterface {
+	return &FakeSubReplicaSets{c, namespace}
+}

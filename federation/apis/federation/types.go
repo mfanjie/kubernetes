@@ -93,6 +93,8 @@ type ClusterList struct {
 	Items []Cluster `json:"items"`
 }
 
+// +genclient=true
+
 // SubReplicaSet represents the configuration of a replica set scheduled to a Cluster.
 type SubReplicaSet struct {
 	unversioned.TypeMeta `json:",inline"`
