@@ -31,7 +31,7 @@ import (
 	"k8s.io/kubernetes/federation/cmd/federated-controller-manager/app/options"
 	"k8s.io/kubernetes/pkg/client/restclient"
 
-	federationclientset "k8s.io/kubernetes/federation/client/clientset_generated/internalclientset"
+	federationclientset "k8s.io/kubernetes/federation/client/clientset_generated/release_1_3"
 	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	"k8s.io/kubernetes/pkg/client/unversioned/clientcmd"
 
