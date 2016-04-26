@@ -296,6 +296,11 @@ func Run(s *options.APIServer) error {
 		return err
 	}
 
+	webservices := apiserver.InstallSupport(m.MuxHelper)
+	for i := range webservices {
+		m.HandlerContainer.Add(webservices[i])
+	}
+
 	installFederationAPIs(s, m, storageFactory)
 	installExtensionsAPIs(s, m, storageFactory)
 

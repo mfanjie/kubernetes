@@ -96,6 +96,7 @@ func TestRun(t *testing.T) {
 		t.Fatalf("%v", err)
 	}
 	testSwaggerSpec(t)
+	testSupport(t)
 	testAPIGroupList(t)
 	testAPIGroup(t)
 	testAPIResourceList(t)
@@ -129,6 +130,14 @@ func readResponse(serverURL string) ([]byte, error) {
 
 func testSwaggerSpec(t *testing.T) {
 	serverURL := serverIP + "/swaggerapi"
+	_, err := readResponse(serverURL)
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+}
+
+func testSupport(t *testing.T) {
+	serverURL := serverIP + "/version"
 	_, err := readResponse(serverURL)
 	if err != nil {
 		t.Fatalf("%v", err)
