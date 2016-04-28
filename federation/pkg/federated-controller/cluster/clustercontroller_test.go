@@ -292,3 +292,8 @@ func TestSyncReplicaSetCreate(t *testing.T) {
 	}
 }
 
+
+//func TestdeleteSubRs(t *testing.T) {
+//
+//}
+
