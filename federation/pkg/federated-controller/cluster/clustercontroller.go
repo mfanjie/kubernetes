@@ -295,7 +295,7 @@ func covertSubRSToRS(subRS *federation_v1alpha1.SubReplicaSet) (*extensionsv1.Re
 		return nil, fmt.Errorf("Unexpected subreplicaset cast error : %v\n", subrs)
 	}
 	result := &extensionsv1.ReplicaSet{}
-	result.Kind = "Replicasets"
+	result.Kind = "Replicaset"
 	result.APIVersion = "extensions/v1beta1"
 	result.ObjectMeta = subrs.ObjectMeta
 	result.Spec = subrs.Spec
