@@ -74,8 +74,8 @@ type ClusterController struct {
 	clusterStore      federationcache.StoreToClusterLister
 
 	// UberRc framework and store
-	replicaSetStore      cache.StoreToReplicationControllerLister
 	replicaSetController *framework.Controller
+	replicaSetStore      cache.StoreToReplicaSetLister
 
 	// subRC that have been queued up for processing by workers
 	queue *workqueue.Type
@@ -177,8 +177,8 @@ func (cc *ClusterController) addToClusterSet(obj interface{}) {
 func (cc *ClusterController) Run(workers int, stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
 	go cc.clusterController.Run(wait.NeverStop)
-	go cc.replicaSetController.Run(wait.NeverStop)
-	go cc.subReplicaSetController.Run(wait.NeverStop)
+	go cc.replicaSetController.Run(stopCh)
+	go cc.subReplicaSetController.Run(stopCh)
 	// monitor cluster status periodically, in phase 1 we just get the health state from "/healthz"
 	go wait.Until(func() {
 		if err := cc.UpdateClusterStatus(); err != nil {
@@ -241,7 +241,9 @@ func (cc *ClusterController) syncSubReplicaSet(key string) error {
 	err = cc.manageSubReplicaSet(subRs)
 	if err != nil {
 		glog.Infof("Unable to manage subRs in kubernetes cluster: %v", key, err)
-		cc.queue.Add(key)
+		//TODO: if manageSubReplicaSet fails multi times, the subrs need to be rescheduled
+		//TODO: Now we just drop this subreplicaset
+		//TODO: cc.queue.Add(key)
 		return err
 	}
 	return nil
@@ -293,7 +295,7 @@ func covertSubRSToRS(subRS *federation_v1alpha1.SubReplicaSet) (*extensionsv1.Re
 		return nil, fmt.Errorf("Unexpected subreplicaset cast error : %v\n", subrs)
 	}
 	result := &extensionsv1.ReplicaSet{}
-	result.Kind = "replicaset"
+	result.Kind = "Replicasets"
 	result.APIVersion = "extensions/v1beta1"
 	result.ObjectMeta = subrs.ObjectMeta
 	result.Spec = subrs.Spec
@@ -309,7 +311,7 @@ func (cc *ClusterController) manageSubReplicaSet(subRs *federation_v1alpha1.SubR
 	targetCluster, err := cc.getBindingClusterOfSubRS(subRs)
 	if targetCluster == nil || err != nil {
 		glog.Infof("Failed to get target cluster of SubRS: %v", err)
-		return err
+		return fmt.Errorf("Failed to get target cluster of SubRS: %v", err)
 	}
 
 	clusterClient, found := cc.clusterKubeClientMap[targetCluster.Name]
@@ -337,14 +339,15 @@ func (cc *ClusterController) manageSubReplicaSet(subRs *federation_v1alpha1.SubR
 		replicaSet, err := clusterClient.CreateReplicaSetToCluster(rs)
 		if err != nil || replicaSet == nil {
 			glog.Infof("Failed to create sub replicaset in kubernetes cluster: %v", err)
-			return err
+			return fmt.Errorf("Failed to create sub replicaset in kubernetes cluster: %v", err)
 		}
-	}
-	// if exists, then update it
-	replicaSet, err = clusterClient.UpdateReplicaSetToCluster(rs)
-	if err != nil || replicaSet == nil {
-		glog.Infof("Failed to update sub replicaset in kubernetes cluster: %v", err)
-		return err
+	} else{
+		// if exists, then update it
+		replicaSet, err = clusterClient.UpdateReplicaSetToCluster(rs)
+		if err != nil || replicaSet == nil {
+			glog.Infof("Failed to update sub replicaset in kubernetes cluster: %v", err)
+			return fmt.Errorf("Failed to update sub replicaset in kubernetes cluster: %v", err)
+		}
 	}
 	return nil
 }
@@ -419,7 +422,6 @@ func (cc *ClusterController) UpdateClusterStatus() error {
 		}
 		cc.clusterClusterStatusMap[cluster.Name] = *clusterStatusNew
 		cluster.Status = *clusterStatusNew
-
 		cluster, err := cc.federationClient.Federation().Clusters().UpdateStatus(&cluster)
 		if err != nil {
 			glog.Infof("Update the status of cluster: %v fail, error is : %v", cluster.Name, err)
