@@ -26,7 +26,7 @@ import (
 	"k8s.io/kubernetes/pkg/api/meta"
 	extensionsv1 "k8s.io/kubernetes/pkg/apis/extensions/v1beta1"
 	"k8s.io/kubernetes/pkg/client/cache"
-	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
+	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/release_1_3"
 	"k8s.io/kubernetes/pkg/controller"
 	"k8s.io/kubernetes/pkg/controller/framework"
 	"k8s.io/kubernetes/pkg/conversion"
@@ -52,7 +52,7 @@ type ClusterController struct {
 	federationClient federationclientset.Interface
 
 	//client used to operate rs
-	client clientset.Interface
+	client clientset.Clientset
 
 	// To allow injection of syncSubRC for testing.
 	syncHandler func(subRcKey string) error
@@ -82,7 +82,7 @@ type ClusterController struct {
 }
 
 // NewclusterController returns a new cluster controller
-func NewclusterController(client clientset.Interface, federationClient federationclientset.Interface, clusterMonitorPeriod time.Duration) *ClusterController {
+func NewclusterController(client clientset.Clientset, federationClient federationclientset.Interface, clusterMonitorPeriod time.Duration) *ClusterController {
 	cc := &ClusterController{
 		knownClusterSet:         make(sets.String),
 		federationClient:        federationClient,
@@ -142,7 +142,7 @@ func NewclusterController(client clientset.Interface, federationClient federatio
 				return cc.client.Extensions().ReplicaSets(api.NamespaceAll).Watch(options)
 			},
 		},
-		&api.ReplicationController{},
+		&extensionsv1.ReplicaSet{},
 		controller.NoResyncPeriodFunc(),
 		framework.ResourceEventHandlerFuncs{
 			DeleteFunc: cc.deleteSubRs,
@@ -295,7 +295,7 @@ func covertSubRSToRS(subRS *federation_v1alpha1.SubReplicaSet) (*extensionsv1.Re
 		return nil, fmt.Errorf("Unexpected subreplicaset cast error : %v\n", subrs)
 	}
 	result := &extensionsv1.ReplicaSet{}
-	result.Kind = "Replicaset"
+	result.Kind = "ReplicaSet"
 	result.APIVersion = "extensions/v1beta1"
 	result.ObjectMeta = subrs.ObjectMeta
 	result.Spec = subrs.Spec

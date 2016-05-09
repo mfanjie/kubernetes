@@ -32,7 +32,7 @@ import (
 	"k8s.io/kubernetes/pkg/client/restclient"
 
 	federationclientset "k8s.io/kubernetes/federation/client/clientset_generated/release_1_3"
-	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
+	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/release_1_3"
 	"k8s.io/kubernetes/pkg/client/unversioned/clientcmd"
 
 	clustercontroller "k8s.io/kubernetes/federation/pkg/federated-controller/cluster"
@@ -114,7 +114,7 @@ func StartControllers(s *options.CMServer, restClientCfg *restclient.Config, sto
 	kubernetesClientSet := clientset.NewForConfigOrDie(restclient.AddUserAgent(restClientCfg, "cluster-controller"))
 	federationClientSet := federationclientset.NewForConfigOrDie(restclient.AddUserAgent(restClientCfg, "cluster-controller"))
 	go clustercontroller.NewclusterController(
-		kubernetesClientSet,
+		*kubernetesClientSet,
 		federationClientSet,
 		s.ClusterMonitorPeriod.Duration,
 	).Run(s.ConcurrentSubRCSyncs, wait.NeverStop)
