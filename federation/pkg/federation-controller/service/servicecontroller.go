@@ -43,6 +43,7 @@ import (
 	"k8s.io/kubernetes/pkg/watch"
 
 	"k8s.io/kubernetes/pkg/conversion"
+	"k8s.io/kubernetes/pkg/fields"
 )
 
 const (
@@ -332,8 +333,16 @@ func (s *ServiceController) ensureClusterService(cachedService *cachedService, c
 	var err error
 	var needUpdate bool
 	for i := 0; i < clientRetryCount; i++ {
-		svc, err := client.Core().Services(service.Namespace).Get(service.Name)
-		if err == nil {
+		l, err := client.Core().Services(service.Namespace).List(
+			api.ListOptions{FieldSelector: fields.Set{"metadata.name": service.Name}.AsSelector()})
+		if err != nil {
+			// err occurs on list, retry
+			glog.Errorf("error when getting service: %+v", err)
+			time.Sleep(cachedService.nextRetryDelay())
+			continue
+		}
+		if len(l.Items) > 0 {
+			svc := l.Items[0]
 			// service exists
 			glog.V(5).Infof("found service %s/%s from cluster %s", service.Namespace, service.Name, clusterName)
 			//reserve immutable fields
@@ -355,22 +364,22 @@ func (s *ServiceController) ensureClusterService(cachedService *cachedService, c
 					}
 				}
 			}
-
 			if needUpdate {
 				// we only apply spec update for now
 				svc.Spec = service.Spec
-				_, err = client.Core().Services(svc.Namespace).Update(svc)
+				_, err = client.Core().Services(svc.Namespace).Update(&svc)
 				if err == nil {
 					glog.V(5).Infof("service %s/%s successfully updated to cluster %s", svc.Namespace, svc.Name, clusterName)
 					return nil
-				} else {
-					glog.V(4).Infof("failed to update %+v", err)
+				} else if errors.IsConflict(err) {
+					glog.V(4).Infof("Not persisting update to service '%s/%s' that has been changed since we received it: %v",
+						service.Namespace, service.Name, err)
 				}
 			} else {
-				glog.V(5).Infof("service %s/%s is not updated to cluster %s as the spec are identical", svc.Namespace, svc.Name, clusterName)
+				glog.V(5).Infof("service %s/%s spec are indentical on federation and cluster %s", svc.Namespace, svc.Name, clusterName)
 				return nil
 			}
-		} else if errors.IsNotFound(err) {
+		} else {
 			// Create service if it is not found
 			glog.Infof("Service '%s/%s' is not found in cluster %s, trying to create new",
 				service.Namespace, service.Name, clusterName)
@@ -380,16 +389,12 @@ func (s *ServiceController) ensureClusterService(cachedService *cachedService, c
 				glog.V(5).Infof("service %s/%s successfully created to cluster %s", service.Namespace, service.Name, clusterName)
 				return nil
 			}
-			glog.V(4).Infof("failed to create %+v", err)
 			if errors.IsAlreadyExists(err) {
 				glog.V(5).Infof("service %s/%s already exists in cluster %s", service.Namespace, service.Name, clusterName)
 				return nil
 			}
 		}
-		if errors.IsConflict(err) {
-			glog.V(4).Infof("Not persisting update to service '%s/%s' that has been changed since we received it: %v",
-				service.Namespace, service.Name, err)
-		}
+		glog.V(4).Infof("failed to process service %s/%s %+v", service.Namespace, service.Name, err)
 		// should we reuse same retry delay for all clusters?
 		time.Sleep(cachedService.nextRetryDelay())
 	}
