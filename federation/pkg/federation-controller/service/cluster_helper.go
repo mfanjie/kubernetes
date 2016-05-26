@@ -32,10 +32,12 @@ import (
 	"k8s.io/kubernetes/pkg/watch"
 
 	"github.com/golang/glog"
+	"reflect"
 )
 
 type clusterCache struct {
 	clientset *clientset.Clientset
+	cluster	  *federation.Cluster
 	// A store of services, populated by the serviceController
 	serviceStore cache.StoreToServiceLister
 	// Watches changes to all services
@@ -55,61 +57,93 @@ type clusterClientCache struct {
 	clientMap map[string]*clusterCache
 }
 
-func (cc *clusterClientCache) startClusterLW(clientset *clientset.Clientset, clusterName string) {
-	cachedClusterClient := clusterCache{
-		clientset:     clientset,
-		serviceQueue:  workqueue.New(),
-		endpointQueue: workqueue.New(),
+func (cc *clusterClientCache) startClusterLW(cluster *federation.Cluster, clusterName string) {
+	cachedClusterClient, ok := cc.clientMap[clusterName]
+	// only create when no existing cachedClusterClient
+	if ok {
+		if !reflect.DeepEqual(cachedClusterClient.cluster.Spec, cluster.Spec) {
+			//rebuild clientset when cluster spec is changed
+			clientset, err := newClusterClientset(cluster)
+			if err != nil || clientset == nil {
+				glog.Errorf("Failed to create corresponding restclient of kubernetes cluster: %v", err)
+			}
+			cachedClusterClient.clientset = clientset
+		} else {
+			// do nothing when there is no spec change
+			return
+		}
+	} else {
+		clientset, err := newClusterClientset(cluster)
+		if err != nil || clientset == nil {
+			glog.Errorf("Failed to create corresponding restclient of kubernetes cluster: %v", err)
+		}
+		cachedClusterClient = &clusterCache{
+			cluster:	   cluster,
+			clientset:     clientset,
+			serviceQueue:  workqueue.New(),
+			endpointQueue: workqueue.New(),
+		}
+		cachedClusterClient.endpointStore.Store, cachedClusterClient.endpointController = framework.NewInformer(
+			&cache.ListWatch{
+				ListFunc: func(options api.ListOptions) (pkg_runtime.Object, error) {
+					return clientset.Core().Endpoints(api.NamespaceAll).List(options)
+				},
+				WatchFunc: func(options api.ListOptions) (watch.Interface, error) {
+					return clientset.Core().Endpoints(api.NamespaceAll).Watch(options)
+				},
+			},
+			&api.Endpoints{},
+			serviceSyncPeriod,
+			framework.ResourceEventHandlerFuncs{
+				AddFunc: func(obj interface{}) {
+					cc.enqueueEndpoint(obj, clusterName)
+				},
+				UpdateFunc: func(old, cur interface{}) {
+					cc.enqueueEndpoint(cur, clusterName)
+				},
+				DeleteFunc: func(obj interface{}) {
+					cc.enqueueEndpoint(obj, clusterName)
+				},
+			},
+		)
+
+		cachedClusterClient.serviceStore.Store, cachedClusterClient.serviceController = framework.NewInformer(
+			&cache.ListWatch{
+				ListFunc: func(options api.ListOptions) (pkg_runtime.Object, error) {
+					return clientset.Core().Services(api.NamespaceAll).List(options)
+				},
+				WatchFunc: func(options api.ListOptions) (watch.Interface, error) {
+					return clientset.Core().Services(api.NamespaceAll).Watch(options)
+				},
+			},
+			&api.Service{},
+			serviceSyncPeriod,
+			framework.ResourceEventHandlerFuncs{
+				AddFunc: func(obj interface{}) {
+					cc.enqueueService(obj, clusterName)
+				},
+				UpdateFunc: func(old, cur interface{}) {
+					oldService, ok := old.(*api.Service)
+					if !ok {
+						return
+					}
+					curService, ok := cur.(*api.Service)
+					if !ok {
+						return
+					}
+					if !reflect.DeepEqual(oldService.Status.LoadBalancer, curService.Status.LoadBalancer) {
+						cc.enqueueService(cur, clusterName)
+					}
+				},
+				DeleteFunc: func(obj interface{}) {
+					service, _ := obj.(*api.Service)
+					cc.enqueueService(obj, clusterName)
+					glog.V(2).Infof("service %s/%s deletion found and enque to service store %s", service.Namespace, service.Name, clusterName)
+				},
+			},
+		)
+		cc.clientMap[clusterName] = cachedClusterClient
 	}
-	cachedClusterClient.endpointStore.Store, cachedClusterClient.endpointController = framework.NewInformer(
-		&cache.ListWatch{
-			ListFunc: func(options api.ListOptions) (pkg_runtime.Object, error) {
-				return clientset.Core().Endpoints(api.NamespaceAll).List(options)
-			},
-			WatchFunc: func(options api.ListOptions) (watch.Interface, error) {
-				return clientset.Core().Endpoints(api.NamespaceAll).Watch(options)
-			},
-		},
-		&api.Endpoints{},
-		serviceSyncPeriod,
-		framework.ResourceEventHandlerFuncs{
-			AddFunc: func(obj interface{}) {
-				cc.enqueueEndpoint(obj, clusterName)
-			},
-			UpdateFunc: func(old, cur interface{}) {
-				cc.enqueueEndpoint(cur, clusterName)
-			},
-			DeleteFunc: func(obj interface{}) {
-				cc.enqueueEndpoint(obj, clusterName)
-			},
-		},
-	)
-
-	cachedClusterClient.serviceStore.Store, cachedClusterClient.serviceController = framework.NewInformer(
-		&cache.ListWatch{
-			ListFunc: func(options api.ListOptions) (pkg_runtime.Object, error) {
-				return clientset.Core().Services(api.NamespaceAll).List(options)
-			},
-			WatchFunc: func(options api.ListOptions) (watch.Interface, error) {
-				return clientset.Core().Services(api.NamespaceAll).Watch(options)
-			},
-		},
-		&api.Service{},
-		serviceSyncPeriod,
-		framework.ResourceEventHandlerFuncs{
-			AddFunc: func(obj interface{}) {
-				cc.enqueueService(obj, clusterName)
-			},
-			UpdateFunc: func(old, cur interface{}) {
-				cc.enqueueService(cur, clusterName)
-			},
-			DeleteFunc: func(obj interface{}) {
-				cc.enqueueService(obj, clusterName)
-			},
-		},
-	)
-
-	cc.clientMap[clusterName] = &cachedClusterClient
 	glog.V(2).Infof("Start watching services on cluster %s", clusterName)
 	go cachedClusterClient.serviceController.Run(wait.NeverStop)
 	glog.V(2).Infof("Start watching endpoints on cluster %s", clusterName)
@@ -140,19 +174,9 @@ func (cc *clusterClientCache) delFromClusterSet(obj interface{}) {
 // restclient to map clusterKubeClientMap
 func (cc *clusterClientCache) addToClientMap(obj interface{}) {
 	cluster := obj.(*federation.Cluster)
-	pred := getClusterConditionPredicate()
-	if pred(*cluster) {
-		//if validateCluster(*cluster) {
-		cc.rwlock.Lock()
-		defer cc.rwlock.Unlock()
-		//create the restclient of cluster
-		clientset, err := newClusterClientset(cluster)
-		if err != nil || clientset == nil {
-			glog.Errorf("Failed to create corresponding restclient of kubernetes cluster: %v", err)
-		}
-		cc.startClusterLW(clientset, cluster.Name)
-	}
-	// keep thing going if the cluster status is updated to not ready
+	cc.rwlock.Lock()
+	defer cc.rwlock.Unlock()
+	cc.startClusterLW(cluster, cluster.Name)
 }
 
 func newClusterClientset(c *federation.Cluster) (*clientset.Clientset, error) {

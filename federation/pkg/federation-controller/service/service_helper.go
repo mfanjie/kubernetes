@@ -43,6 +43,9 @@ func (sc *ServiceController) clusterServiceWorker() {
 				if quit {
 					return
 				}
+				if key == "fmeng/es1" && clusterName == "cluster207" {
+					fmt.Println("found es1 for cluster207")
+				}
 				defer cache.serviceQueue.Done(key)
 				err := sc.clusterCache.syncService(key.(string), clusterName, cache, sc.serviceCache, fedClient)
 				if err != nil {
@@ -81,6 +84,10 @@ func (cc *clusterClientCache) syncService(key, clusterName string, clusterCache 
 			glog.Infof("Found tombstone for %v", key)
 			needUpdate = cc.processServiceDeletion(cachedService, clusterName)
 		}
+	}
+	if !exists {
+		glog.Infof("can not get service %v for cluster %s from serviceStore", key, clusterName)
+		needUpdate = cc.processServiceDeletion(cachedService, clusterName)
 	}
 
 	if needUpdate {

@@ -68,7 +68,7 @@ func (cc *clusterClientCache) syncEndpoint(key, clusterName string, clusterCache
 	}
 	if !exists {
 		// service absence in store means watcher caught the deletion, ensure LB info is cleaned
-		glog.Infof("endpoint has been deleted %v", key)
+		glog.Infof("can not get endpoint %v for cluster %s from endpointStore", key, clusterName)
 		err = cc.processEndpointDeletion(cachedService, clusterName)
 	}
 	if exists {
