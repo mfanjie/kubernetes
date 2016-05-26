@@ -197,17 +197,13 @@ func New(federationClient federationclientset.Interface, dns dnsprovider.Interfa
 					// update when spec is changed
 					s.clusterCache.addToClientMap(cur)
 				}
+
 				pred := getClusterConditionPredicate()
-				// check status
-				// skip if condition is not changed
-				if pred(*oldCluster) && pred(*curCluster){
+				// only update when condition changed to ready from not-ready
+				if !pred(*oldCluster) && pred(*curCluster) {
 					s.clusterCache.addToClientMap(cur)
 				}
-				// update when codition changed to ready
-				if !pred(*oldCluster) && pred(*curCluster){
-					s.clusterCache.addToClientMap(cur)
-				}
-				// did not handle ready -> non-ready
+				// did not handle ready -> not-ready
 				// how could we stop a controller?
 			},
 		},

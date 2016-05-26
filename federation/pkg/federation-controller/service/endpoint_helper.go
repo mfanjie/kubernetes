@@ -35,17 +35,19 @@ func (sc *ServiceController) clusterEndpointWorker() {
 	for clusterName, cache := range sc.clusterCache.clientMap {
 		go func(cache *clusterCache, clusterName string) {
 			for {
-				key, quit := cache.endpointQueue.Get()
-				// update endpoint cache
-				if quit {
-					return
-				}
-				defer cache.endpointQueue.Done(key)
-				err := sc.clusterCache.syncEndpoint(key.(string), clusterName, cache, sc.serviceCache, fedClient)
-				if err != nil {
-					glog.V(2).Infof("failed to sync endpoint: %+v", err)
-					//return err
-				}
+				func() {
+					key, quit := cache.endpointQueue.Get()
+					// update endpoint cache
+					if quit {
+						return
+					}
+					defer cache.endpointQueue.Done(key)
+					err := sc.clusterCache.syncEndpoint(key.(string), clusterName, cache, sc.serviceCache, fedClient)
+					if err != nil {
+						glog.V(2).Infof("failed to sync endpoint: %+v", err)
+						//return err
+					}
+				}()
 			}
 		}(cache, clusterName)
 	}

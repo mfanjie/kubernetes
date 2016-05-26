@@ -37,7 +37,7 @@ import (
 
 type clusterCache struct {
 	clientset *clientset.Clientset
-	cluster	  *federation.Cluster
+	cluster   *federation.Cluster
 	// A store of services, populated by the serviceController
 	serviceStore cache.StoreToServiceLister
 	// Watches changes to all services
@@ -67,18 +67,24 @@ func (cc *clusterClientCache) startClusterLW(cluster *federation.Cluster, cluste
 			if err != nil || clientset == nil {
 				glog.Errorf("Failed to create corresponding restclient of kubernetes cluster: %v", err)
 			}
+			glog.V(4).Infof("Cluster spec changed, rebuild clientset for cluster %s", clusterName)
 			cachedClusterClient.clientset = clientset
+			go cachedClusterClient.serviceController.Run(wait.NeverStop)
+			go cachedClusterClient.endpointController.Run(wait.NeverStop)
+			glog.V(2).Infof("Start watching services and endpoints on cluster %s", clusterName)
 		} else {
 			// do nothing when there is no spec change
+			glog.V(4).Infof("keep clientset for cluster %s", clusterName)
 			return
 		}
 	} else {
+		glog.V(4).Infof("No client cache for cluster %s, building new", clusterName)
 		clientset, err := newClusterClientset(cluster)
 		if err != nil || clientset == nil {
 			glog.Errorf("Failed to create corresponding restclient of kubernetes cluster: %v", err)
 		}
 		cachedClusterClient = &clusterCache{
-			cluster:	   cluster,
+			cluster:       cluster,
 			clientset:     clientset,
 			serviceQueue:  workqueue.New(),
 			endpointQueue: workqueue.New(),
@@ -124,6 +130,7 @@ func (cc *clusterClientCache) startClusterLW(cluster *federation.Cluster, cluste
 				},
 				UpdateFunc: func(old, cur interface{}) {
 					oldService, ok := old.(*api.Service)
+
 					if !ok {
 						return
 					}
@@ -143,11 +150,11 @@ func (cc *clusterClientCache) startClusterLW(cluster *federation.Cluster, cluste
 			},
 		)
 		cc.clientMap[clusterName] = cachedClusterClient
+		go cachedClusterClient.serviceController.Run(wait.NeverStop)
+		go cachedClusterClient.endpointController.Run(wait.NeverStop)
+		glog.V(2).Infof("Start watching services and endpoints on cluster %s", clusterName)
 	}
-	glog.V(2).Infof("Start watching services on cluster %s", clusterName)
-	go cachedClusterClient.serviceController.Run(wait.NeverStop)
-	glog.V(2).Infof("Start watching endpoints on cluster %s", clusterName)
-	go cachedClusterClient.endpointController.Run(wait.NeverStop)
+
 }
 
 //TODO: copied from cluster controller, to make this as common function in pass 2
@@ -176,7 +183,16 @@ func (cc *clusterClientCache) addToClientMap(obj interface{}) {
 	cluster := obj.(*federation.Cluster)
 	cc.rwlock.Lock()
 	defer cc.rwlock.Unlock()
-	cc.startClusterLW(cluster, cluster.Name)
+	cluster, ok := obj.(*federation.Cluster)
+	if !ok {
+		return
+	}
+	pred := getClusterConditionPredicate()
+	// check status
+	// skip if not ready
+	if pred(*cluster) {
+		cc.startClusterLW(cluster, cluster.Name)
+	}
 }
 
 func newClusterClientset(c *federation.Cluster) (*clientset.Clientset, error) {
