@@ -23,10 +23,9 @@ import (
 	"strings"
 
 	"github.com/golang/glog"
-	federation_v1alpha1 "k8s.io/kubernetes/federation/apis/federation/v1alpha1"
+	"k8s.io/kubernetes/federation/apis/federation"
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/unversioned"
-	"k8s.io/kubernetes/pkg/api/v1"
 	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	"k8s.io/kubernetes/pkg/client/restclient"
 	"k8s.io/kubernetes/pkg/client/typed/discovery"
@@ -46,7 +45,7 @@ const (
 
 // This is to inject a different kubeconfigGetter in tests.
 // We dont use the standard one which calls NewInCluster in tests to avoid having to setup service accounts and mount files with secret tokens.
-var KubeconfigGetterForCluster = func(c *federation_v1alpha1.Cluster) clientcmd.KubeconfigGetter {
+var KubeconfigGetterForCluster = func(c *federation.Cluster) clientcmd.KubeconfigGetter {
 	return func() (*clientcmdapi.Config, error) {
 		// Get the namespace this is running in from the env variable.
 		namespace := os.Getenv("POD_NAMESPACE")
@@ -58,19 +57,14 @@ var KubeconfigGetterForCluster = func(c *federation_v1alpha1.Cluster) clientcmd.
 		if err != nil {
 			return nil, fmt.Errorf("error in creating in-cluster client: %s", err)
 		}
-		data := []byte{}
-		if c.Spec.SecretRef != nil {
-			secret, err := client.Secrets(namespace).Get(c.Spec.SecretRef.Name)
-			if err != nil {
-				return nil, fmt.Errorf("error in fetching secret: %s", err)
-			}
-			ok := false
-			data, ok = secret.Data[KubeconfigSecretDataKey]
-			if !ok {
-				return nil, fmt.Errorf("secret does not have data with key: %s", KubeconfigSecretDataKey)
-			}
-		} else {
-			glog.Infof("didnt find secretRef for cluster %s. Trying insecure access", c.Name)
+		secret, err := client.Secrets(namespace).Get(c.Spec.SecretRef.Name)
+		if err != nil {
+			return nil, fmt.Errorf("error in fetching secret: %s", err)
+		}
+		ok := false
+		data, ok := secret.Data[KubeconfigSecretDataKey]
+		if !ok {
+			return nil, fmt.Errorf("secret does not have data with key: %s", KubeconfigSecretDataKey)
 		}
 		return clientcmd.Load(data)
 	}
@@ -81,8 +75,28 @@ type ClusterClient struct {
 	kubeClient      *clientset.Clientset
 }
 
-func NewClusterClientSet(c *federation_v1alpha1.Cluster) (*ClusterClient, error) {
+func NewClusterClientSet(c *federation.Cluster) (*ClusterClient, error) {
+	clusterConfig, err := BuildClusterConfig(c)
+	if err != nil {
+		return nil, err
+	}
+	var clusterClientSet = ClusterClient{}
+	if clusterConfig != nil {
+		clusterClientSet.discoveryClient = discovery.NewDiscoveryClientForConfigOrDie((restclient.AddUserAgent(clusterConfig, UserAgentName)))
+		if clusterClientSet.discoveryClient == nil {
+			return nil, nil
+		}
+		clusterClientSet.kubeClient = clientset.NewForConfigOrDie((restclient.AddUserAgent(clusterConfig, UserAgentName)))
+		if clusterClientSet.kubeClient == nil {
+			return nil, nil
+		}
+	}
+	return &clusterClientSet, err
+}
+
+func BuildClusterConfig(c *federation.Cluster) (*restclient.Config, error) {
 	var serverAddress string
+	var clusterConfig *restclient.Config
 	hostIP, err := utilnet.ChooseHostInterface()
 	if err != nil {
 		return nil, err
@@ -99,58 +113,54 @@ func NewClusterClientSet(c *federation_v1alpha1.Cluster) (*ClusterClient, error)
 			break
 		}
 	}
-	var clusterClientSet = ClusterClient{}
 	if serverAddress != "" {
-		kubeconfigGetter := KubeconfigGetterForCluster(c)
-		clusterConfig, err := clientcmd.BuildConfigFromKubeconfigGetter(serverAddress, kubeconfigGetter)
+		if c.Spec.SecretRef == nil {
+			glog.Infof("didnt find secretRef for cluster %s. Trying insecure access", c.Name)
+			clusterConfig, err = clientcmd.BuildConfigFromFlags(serverAddress, "")
+		} else {
+			kubeconfigGetter := KubeconfigGetterForCluster(c)
+			clusterConfig, err = clientcmd.BuildConfigFromKubeconfigGetter(serverAddress, kubeconfigGetter)
+		}
 		if err != nil {
 			return nil, err
 		}
 		clusterConfig.QPS = KubeAPIQPS
 		clusterConfig.Burst = KubeAPIBurst
-		clusterClientSet.discoveryClient = discovery.NewDiscoveryClientForConfigOrDie((restclient.AddUserAgent(clusterConfig, UserAgentName)))
-		if clusterClientSet.discoveryClient == nil {
-			return nil, nil
-		}
-		clusterClientSet.kubeClient = clientset.NewForConfigOrDie((restclient.AddUserAgent(clusterConfig, UserAgentName)))
-		if clusterClientSet.kubeClient == nil {
-			return nil, nil
-		}
 	}
-	return &clusterClientSet, err
+	return clusterConfig, nil
 }
 
 // GetClusterHealthStatus gets the kubernetes cluster health status by requesting "/healthz"
-func (self *ClusterClient) GetClusterHealthStatus() *federation_v1alpha1.ClusterStatus {
-	clusterStatus := federation_v1alpha1.ClusterStatus{}
+func (self *ClusterClient) GetClusterHealthStatus() *federation.ClusterStatus {
+	clusterStatus := federation.ClusterStatus{}
 	currentTime := unversioned.Now()
-	newClusterReadyCondition := federation_v1alpha1.ClusterCondition{
-		Type:               federation_v1alpha1.ClusterReady,
-		Status:             v1.ConditionTrue,
+	newClusterReadyCondition := federation.ClusterCondition{
+		Type:               federation.ClusterReady,
+		Status:             api.ConditionTrue,
 		Reason:             "ClusterReady",
 		Message:            "/healthz responded with ok",
 		LastProbeTime:      currentTime,
 		LastTransitionTime: currentTime,
 	}
-	newClusterNotReadyCondition := federation_v1alpha1.ClusterCondition{
-		Type:               federation_v1alpha1.ClusterReady,
-		Status:             v1.ConditionFalse,
+	newClusterNotReadyCondition := federation.ClusterCondition{
+		Type:               federation.ClusterReady,
+		Status:             api.ConditionFalse,
 		Reason:             "ClusterNotReady",
 		Message:            "/healthz responded without ok",
 		LastProbeTime:      currentTime,
 		LastTransitionTime: currentTime,
 	}
-	newNodeOfflineCondition := federation_v1alpha1.ClusterCondition{
-		Type:               federation_v1alpha1.ClusterOffline,
-		Status:             v1.ConditionTrue,
+	newNodeOfflineCondition := federation.ClusterCondition{
+		Type:               federation.ClusterOffline,
+		Status:             api.ConditionTrue,
 		Reason:             "ClusterNotReachable",
 		Message:            "cluster is not reachable",
 		LastProbeTime:      currentTime,
 		LastTransitionTime: currentTime,
 	}
-	newNodeNotOfflineCondition := federation_v1alpha1.ClusterCondition{
-		Type:               federation_v1alpha1.ClusterOffline,
-		Status:             v1.ConditionFalse,
+	newNodeNotOfflineCondition := federation.ClusterCondition{
+		Type:               federation.ClusterOffline,
+		Status:             api.ConditionFalse,
 		Reason:             "ClusterReachable",
 		Message:            "cluster is reachable",
 		LastProbeTime:      currentTime,

@@ -263,6 +263,9 @@ func (s *ServiceController) ensureDnsRecords(clusterName string, cachedService *
 	serviceName := cachedService.lastState.Name
 	namespaceName := cachedService.lastState.Namespace
 	zoneNames, regionName, err := s.getClusterZoneNames(clusterName)
+	if zoneNames == nil {
+		return fmt.Errorf("fail to get cluster zone names")
+	}
 	if err != nil {
 		return err
 	}

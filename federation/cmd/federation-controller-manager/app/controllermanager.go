@@ -29,7 +29,6 @@ import (
 	"k8s.io/kubernetes/pkg/client/restclient"
 
 	internalclientset "k8s.io/kubernetes/federation/client/clientset_generated/federation_internalclientset"
-	federationclientset "k8s.io/kubernetes/federation/client/clientset_generated/federation_release_1_3"
 	"k8s.io/kubernetes/federation/pkg/dnsprovider"
 	clustercontroller "k8s.io/kubernetes/federation/pkg/federation-controller/cluster"
 	servicecontroller "k8s.io/kubernetes/federation/pkg/federation-controller/service"
@@ -108,7 +107,7 @@ func Run(s *options.CMServer) error {
 
 func StartControllers(s *options.CMServer, restClientCfg *restclient.Config) error {
 
-	federationClientSet := federationclientset.NewForConfigOrDie(restclient.AddUserAgent(restClientCfg, "cluster-controller"))
+	federationClientSet := internalclientset.NewForConfigOrDie(restclient.AddUserAgent(restClientCfg, "cluster-controller"))
 	go clustercontroller.NewclusterController(federationClientSet, s.ClusterMonitorPeriod.Duration).Run()
 	dns, err := dnsprovider.InitDnsProvider(s.DnsProvider, s.DnsConfigFile)
 	if err != nil {

@@ -17,22 +17,20 @@ limitations under the License.
 package service
 
 import (
-	"sync"
-
+	"github.com/golang/glog"
 	"k8s.io/kubernetes/federation/apis/federation"
+	"k8s.io/kubernetes/federation/pkg/federation-controller/cluster"
 	"k8s.io/kubernetes/pkg/api"
 	cache "k8s.io/kubernetes/pkg/client/cache"
 	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	"k8s.io/kubernetes/pkg/client/restclient"
-	"k8s.io/kubernetes/pkg/client/unversioned/clientcmd"
 	"k8s.io/kubernetes/pkg/controller/framework"
 	pkg_runtime "k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/util/wait"
 	"k8s.io/kubernetes/pkg/util/workqueue"
 	"k8s.io/kubernetes/pkg/watch"
-
-	"github.com/golang/glog"
 	"reflect"
+	"sync"
 )
 
 type clusterCache struct {
@@ -196,12 +194,10 @@ func (cc *clusterClientCache) addToClientMap(obj interface{}) {
 }
 
 func newClusterClientset(c *federation.Cluster) (*clientset.Clientset, error) {
-	clusterConfig, err := clientcmd.BuildConfigFromFlags(c.Spec.ServerAddressByClientCIDRs[0].ServerAddress, "")
-	if err != nil {
-		return nil, err
+	clusterConfig, err := cluster.BuildClusterConfig(c)
+	if clusterConfig != nil {
+		clientset := clientset.NewForConfigOrDie(restclient.AddUserAgent(clusterConfig, UserAgentName))
+		return clientset, nil
 	}
-	clusterConfig.QPS = KubeAPIQPS
-	clusterConfig.Burst = KubeAPIBurst
-	clientset := clientset.NewForConfigOrDie(restclient.AddUserAgent(clusterConfig, UserAgentName))
-	return clientset, nil
+	return nil, err
 }
