@@ -90,6 +90,8 @@ func NewCMServer() *CMServer {
 func (s *CMServer) AddFlags(fs *pflag.FlagSet) {
 	fs.IntVar(&s.Port, "port", s.Port, "The port that the controller-manager's http service runs on")
 	fs.Var(componentconfig.IPVar{Val: &s.Address}, "address", "The IP address to serve on (set to 0.0.0.0 for all interfaces)")
+	fs.StringVar(&s.DnsProvider, "dns-provider", s.DnsProvider, "The dns provider for federation services.  Empty string for no provider.")
+	fs.StringVar(&s.DnsConfigFile, "dns-config", s.DnsConfigFile, "The path to the dns provider configuration file.  Empty string for no configuration file.")
 	fs.IntVar(&s.ConcurrentServiceSyncs, "concurrent-service-syncs", s.ConcurrentServiceSyncs, "The number of service syncing operations that will be done concurrently. Larger number = faster endpoint updating, but more CPU (and network) load")
 	fs.DurationVar(&s.ClusterMonitorPeriod.Duration, "cluster-monitor-period", s.ClusterMonitorPeriod.Duration, "The period for syncing ClusterStatus in ClusterController.")
 	fs.BoolVar(&s.EnableProfiling, "profiling", true, "Enable profiling via web interface host:port/debug/pprof/")
