@@ -28,6 +28,7 @@ import (
 	federationclientset "k8s.io/kubernetes/federation/client/clientset_generated/federation_release_1_3"
 	"k8s.io/kubernetes/federation/cmd/federation-controller-manager/app/options"
 	"k8s.io/kubernetes/federation/pkg/dnsprovider"
+	_ "k8s.io/kubernetes/federation/pkg/dnsprovider/providers/google/clouddns"
 	clustercontroller "k8s.io/kubernetes/federation/pkg/federation-controller/cluster"
 	servicecontroller "k8s.io/kubernetes/federation/pkg/federation-controller/service"
 	"k8s.io/kubernetes/federation/pkg/federation-controller/util"

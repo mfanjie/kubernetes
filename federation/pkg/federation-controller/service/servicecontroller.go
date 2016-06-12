@@ -317,6 +317,8 @@ func (s *ServiceController) deleteFederationService(cachedService *cachedService
 		err := s.deleteClusterService(clusterName, cachedService, cluster.clientset)
 		if err != nil {
 			hasErr = true
+		} else if err := s.ensureDnsRecords(clusterName, cachedService); err != nil {
+			hasErr = true
 		}
 	}
 	if hasErr {
