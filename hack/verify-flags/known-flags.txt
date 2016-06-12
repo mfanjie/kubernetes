@@ -96,7 +96,9 @@ deployment-label-key
 deserialization-cache-size
 dest-file
 disable-filter
+dns-config
 dns-port
+dns-provider
 docker-email
 docker-endpoint
 docker-exec-handler
