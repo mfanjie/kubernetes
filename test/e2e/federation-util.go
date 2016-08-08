@@ -88,7 +88,7 @@ func clusterIsReadyOrFail(f *framework.Framework, context *framework.E2EContext)
 	framework.Logf("Cluster %s is Ready", context.Name)
 }
 
-func waitforclustersReadness(f *framework.Framework, clusterSize int) {
+func waitforclustersReadness(f *framework.Framework, clusterSize int) *federationapi.ClusterList {
 	var clusterList *federationapi.ClusterList
 	if err := wait.PollImmediate(framework.Poll, FederatedIngressTimeout, func() (bool, error) {
 		var err error
@@ -104,6 +104,7 @@ func waitforclustersReadness(f *framework.Framework, clusterSize int) {
 	}); err != nil {
 		framework.Failf("Failed to list registered clusters: %+v", err)
 	}
+	return clusterList
 }
 
 func createClientsetForCluster(c federationapi.Cluster, i int, userAgentName string) *release_1_3.Clientset {
@@ -144,7 +145,7 @@ func createNamespaceInClusters(clusters map[string]*cluster, f *framework.Framew
 		}
 	}
 }
-func teardownClusters(clusters map[string]*cluster, f *framework.Framework) {
+func unregisterClusters(clusters map[string]*cluster, f *framework.Framework) {
 	for name, c := range clusters {
 		if c.namespaceCreated {
 			if _, err := c.Clientset.Core().Namespaces().Get(f.Namespace.Name); !errors.IsNotFound(err) {
@@ -165,7 +166,7 @@ func teardownClusters(clusters map[string]*cluster, f *framework.Framework) {
 }
 
 // can not be moved to util, as By and Expect must be put in Ginkgo test unit
-func setupClusters(clusters map[string]*cluster, userAgentName, federationName string, f *framework.Framework) string {
+func registerClusters(clusters map[string]*cluster, userAgentName, federationName string, f *framework.Framework) string {
 
 	contexts := f.GetUnderlyingFederatedContexts()
 
@@ -173,9 +174,8 @@ func setupClusters(clusters map[string]*cluster, userAgentName, federationName s
 		createClusterObjectOrFail(f, &context)
 	}
 
-	var clusterList *federationapi.ClusterList
 	By("Obtaining a list of all the clusters")
-	waitforclustersReadness(f, len(contexts))
+	clusterList := waitforclustersReadness(f, len(contexts))
 
 	framework.Logf("Checking that %d clusters are Ready", len(contexts))
 	for _, context := range contexts {

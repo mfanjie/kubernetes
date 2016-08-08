@@ -68,11 +68,11 @@ var _ = framework.KubeDescribe("[Feature:Federation]", func() {
 			}
 
 			clusters = map[string]*cluster{}
-			primaryClusterName = setupClusters(clusters, SCUserAgentName, federationName, f)
+			primaryClusterName = registerClusters(clusters, SCUserAgentName, federationName, f)
 		})
 
 		AfterEach(func() {
-			teardownClusters(clusters, f)
+			unregisterClusters(clusters, f)
 		})
 
 		Describe("Service creation", func() {

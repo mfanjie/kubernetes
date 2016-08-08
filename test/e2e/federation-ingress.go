@@ -19,33 +19,24 @@ package e2e
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"reflect"
 	"time"
 
-	"k8s.io/kubernetes/federation/client/clientset_generated/federation_release_1_3"
 	"k8s.io/kubernetes/pkg/api/errors"
-	"k8s.io/kubernetes/pkg/client/clientset_generated/release_1_3"
+	"k8s.io/kubernetes/pkg/apis/extensions"
+	"k8s.io/kubernetes/pkg/client/restclient"
 	"k8s.io/kubernetes/pkg/util/wait"
 	"k8s.io/kubernetes/test/e2e/framework"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	"k8s.io/kubernetes/pkg/apis/extensions"
-	"path/filepath"
 )
 
 const (
-	ICUserAgentName = "federation-e2e-ingress-controller"
-
+	ICUserAgentName         = "federation-e2e-ingress-controller"
 	FederatedIngressTimeout = 60 * time.Second
-
-	FederatedIngressName    = "federated-ingress"
-	FederatedIngressPodName = "federated-ingress-test-pod"
 )
-
-var FederatedIngressLabels = map[string]string{
-	"foo": "bar",
-}
 
 var _ = framework.KubeDescribe("[Feature:Federation]", func() {
 	defer GinkgoRecover()
@@ -61,27 +52,26 @@ var _ = framework.KubeDescribe("[Feature:Federation]", func() {
 	f := framework.NewDefaultFederatedFramework("federation-ingress")
 
 	var _ = Describe("Federated Ingresses", func() {
+		// register clusters in federation apiserver
 		BeforeEach(func() {
 			framework.SkipUnlessFederated(f.Client)
-			// TODO: Federation API server should be able to answer this.
 			if federationName = os.Getenv("FEDERATION_NAME"); federationName == "" {
 				federationName = DefaultFederationName
 			}
 			clusters = map[string]*cluster{}
-			primaryClusterName = setupClusters(clusters, ICUserAgentName, federationName, f)
+			primaryClusterName = registerClusters(clusters, ICUserAgentName, federationName, f)
 
-			// TODO: do we need run this in federation e2e?
-			// f.BeforeEach()
 			// TODO: require ingress to be supported by extensions client
 			jig = newTestJig(f.FederationClientset.ExtensionsClient.RESTClient)
 			ns = f.Namespace.Name
-
 		})
 
+		// create backend pod, service and ingress,
+		// this requires federation replicaset controller, service controller and ingress controller working properly
 		conformanceTests = createComformanceTests(jig, ns)
 
 		AfterEach(func() {
-			teardownClusters(clusters, f)
+			unregisterClusters(clusters, f)
 		})
 
 		Describe("Ingress creation", func() {
@@ -103,14 +93,6 @@ var _ = framework.KubeDescribe("[Feature:Federation]", func() {
 					By("No ingress created, no cleanup necessary")
 					return
 				}
-				By("Deleting ingress")
-				jig.deleteIngress()
-				//TODO: delete cluster ingresses, or skip as the cluster will be teared down
-				//deleteIngressOrFail()
-				//TODO: clean up federation GCE(dns name?) and ingress info in all underlying clusters
-				By("Cleaning up cloud resources")
-
-				cleanupGCE(gceController)
 			})
 
 			It("should succeed", func() {
@@ -119,10 +101,27 @@ var _ = framework.KubeDescribe("[Feature:Federation]", func() {
 					By(t.entryLog)
 					t.execute()
 					By(t.exitLog)
+					// confirm corresponding objects in underlying clusters are created, and spec are equal
+					waitForIngressShardsOrFail(f.Namespace.Name, jig.ing, clusters)
+					// confirm the traffic are working properly, which means the underlying services, backend pods, ingress have been handled properly
 					jig.waitForIngress()
+
 				}
-				//TODO: check ingress info in all underlying k8s clusters
-				//waitForIngressOrFail()
+			})
+
+			It("ingress should be rebuilt when deletion in underlying cluster", func() {
+				for _, c := range clusters {
+					err := c.ExtensionsClient.RESTClient.Delete().Namespace(ns).Resource(ingressResourceName).Name(jig.ing.Name).Do().Error()
+					if err != nil {
+						framework.Failf("Unable to delete underlying ingress: %v", err)
+					}
+					break
+				}
+				// the delete ingress should be recovered by federation ingress controller, so wait and
+				// confirm corresponding objects in underlying clusters are created, and spec are equal
+				waitForIngressShardsOrFail(f.Namespace.Name, jig.ing, clusters)
+				// confirm the traffic are working properly, which means the underlying services, backend pods, ingress have been handled properly
+				jig.waitForIngress()
 			})
 
 			It("shoud create ingress with given static-ip ", func() {
@@ -134,13 +133,24 @@ var _ = framework.KubeDescribe("[Feature:Federation]", func() {
 					"kubernetes.io/ingress.allow-http":            "false",
 				})
 
+				// confirm corresponding objects in underlying clusters are created, and spec are equal
+				waitForIngressShardsOrFail(f.Namespace.Name, jig.ing, clusters)
+
 				By("waiting for Ingress to come up with ip: " + ip)
 				httpClient := buildInsecureClient(reqTimeout)
 				ExpectNoError(jig.pollURL(fmt.Sprintf("https://%v/", ip), "", lbPollTimeout, httpClient, false))
 
 				By("should reject HTTP traffic")
 				ExpectNoError(jig.pollURL(fmt.Sprintf("http://%v/", ip), "", lbPollTimeout, httpClient, true))
-				//TODO: check ingress info in all underlying k8s cluster
+			})
+
+			It("federation ingress deletion should delete all underlying ingresses", func() {
+				err := jig.client.Delete().Namespace(ns).Resource(ingressResourceName).Name(jig.ing.Name).Do().Error()
+				if err != nil {
+					framework.Failf("Unable to delete federation ingress: %v", err)
+				}
+				// all underlying ingress should be deleted by federation ingress controller
+				waitForIngressShardsGoneOrFail(f.Namespace.Name, jig.ing, clusters)
 			})
 		})
 	})
@@ -169,11 +179,15 @@ func equivalentIngress(federationIngress, clusterIngress extensions.Ingress) boo
    waitForIngressOrFail waits until a ingress is either present or absent in the cluster specified by clientset.
    If the condition is not met within timout, it fails the calling test.
 */
-func waitForIngressOrFail(clientset *release_1_3.Clientset, namespace string, ingress *extensions.Ingress, present bool, timeout time.Duration) {
+func waitForIngressOrFail(client *restclient.RESTClient, namespace string, ingress *extensions.Ingress, present bool, timeout time.Duration) {
 	By(fmt.Sprintf("Fetching a federated ingress shard of ingress %q in namespace %q from cluster", ingress.Name, namespace))
 	var clusterIngress *extensions.Ingress
+	var ok bool
 	err := wait.PollImmediate(framework.Poll, timeout, func() (bool, error) {
-		clusterIngress, err := clientset.ExtensionsClient.Ingresses(namespace).Get(ingress.Name)
+		o, err := client.Get().Namespace(namespace).Resource(ingressResourceName).Name(ingress.Name).Do().Get()
+		if clusterIngress, ok = o.(*extensions.Ingress); !ok {
+			return false, nil
+		}
 		if (!present) && errors.IsNotFound(err) { // We want it gone, and it's gone.
 			By(fmt.Sprintf("Success: shard of federated ingress %q in namespace %q in cluster is absent", ingress.Name, namespace))
 			return true, nil // Success
@@ -198,16 +212,25 @@ func waitForIngressOrFail(clientset *release_1_3.Clientset, namespace string, in
 func waitForIngressShardsOrFail(namespace string, ingress *extensions.Ingress, clusters map[string]*cluster) {
 	framework.Logf("Waiting for ingress %q in %d clusters", ingress.Name, len(clusters))
 	for _, c := range clusters {
-		waitForIngressOrFail(c.Clientset, namespace, ingress, true, FederatedIngressTimeout)
+		waitForIngressOrFail(c.Clientset.ExtensionsClient.RESTClient, namespace, ingress, true, FederatedIngressTimeout)
 	}
 }
 
-func deleteIngressOrFail(clientset *federation_release_1_3.Clientset, namespace string, ingressName string) {
-	var err error
-	if clientset == nil || len(namespace) == 0 || len(ingressName) == 0 {
-		Fail(fmt.Sprintf("Internal error: invalid parameters passed to deleteIngressOrFail: clientset: %v, namespace: %v, ingress: %v", clientset, namespace, ingressName))
+/*
+   waitForIngressShardsGoneOrFail waits for the ingress to disappear in all clusters
+*/
+func waitForIngressShardsGoneOrFail(namespace string, ingress *extensions.Ingress, clusters map[string]*cluster) {
+	framework.Logf("Waiting for ingress %q in %d clusters", ingress.Name, len(clusters))
+	for _, c := range clusters {
+		waitForIngressOrFail(c.Clientset.ExtensionsClient.RESTClient, namespace, ingress, false, FederatedIngressTimeout)
 	}
-	// TODO
-	//err := clientset.Ingress(namespace).Delete(ingressName, api.NewDeleteOptions(0))
+}
+
+func deleteIngressOrFail(client *restclient.RESTClient, namespace string, ingressName string) {
+	var err error
+	if client == nil || len(namespace) == 0 || len(ingressName) == 0 {
+		Fail(fmt.Sprintf("Internal error: invalid parameters passed to deleteIngressOrFail: clientset: %v, namespace: %v, ingress: %v", client, namespace, ingressName))
+	}
+	err = client.Delete().Namespace(namespace).Resource(ingressResourceName).Do().Error()
 	framework.ExpectNoError(err, "Error deleting ingress %q from namespace %q", ingressName, namespace)
 }

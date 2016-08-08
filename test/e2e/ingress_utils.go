@@ -522,6 +522,7 @@ func (j *testJig) createIngress(manifestPath, ns string, ingAnnotations map[stri
 	}
 
 	framework.Logf("creating replication controller")
+	// TODO: to change to rs.yaml when add federation ingress e2e
 	framework.RunKubectlOrDie("create", "-f", mkpath("rc.yaml"), fmt.Sprintf("--namespace=%v", ns))
 
 	framework.Logf("creating service")
