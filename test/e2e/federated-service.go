@@ -37,8 +37,6 @@ import (
 )
 
 const (
-	SCUserAgentName = "federation-e2e-service-controller"
-
 	FederatedServiceTimeout = 60 * time.Second
 
 	FederatedServiceName    = "federated-service"
@@ -68,7 +66,7 @@ var _ = framework.KubeDescribe("[Feature:Federation]", func() {
 			}
 
 			clusters = map[string]*cluster{}
-			primaryClusterName = registerClusters(clusters, SCUserAgentName, federationName, f)
+			primaryClusterName = registerClusters(clusters, UserAgentName, federationName, f)
 		})
 
 		AfterEach(func() {

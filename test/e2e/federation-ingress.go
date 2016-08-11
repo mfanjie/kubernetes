@@ -34,11 +34,10 @@ import (
 )
 
 const (
-	ICUserAgentName         = "federation-e2e-ingress-controller"
 	FederatedIngressTimeout = 60 * time.Second
 )
 
-var _ = framework.KubeDescribe("[Feature:Federation]", func() {
+var _ = framework.KubeDescribe("Federation ingresses [Feature:Federation]", func() {
 	defer GinkgoRecover()
 
 	var (
@@ -51,6 +50,7 @@ var _ = framework.KubeDescribe("[Feature:Federation]", func() {
 
 	f := framework.NewDefaultFederatedFramework("federation-ingress")
 
+	// e2e cases for federation ingress controller
 	var _ = Describe("Federated Ingresses", func() {
 		// register clusters in federation apiserver
 		BeforeEach(func() {
@@ -59,7 +59,7 @@ var _ = framework.KubeDescribe("[Feature:Federation]", func() {
 				federationName = DefaultFederationName
 			}
 			clusters = map[string]*cluster{}
-			primaryClusterName = registerClusters(clusters, ICUserAgentName, federationName, f)
+			primaryClusterName = registerClusters(clusters, UserAgentName, federationName, f)
 
 			// TODO: require ingress to be supported by extensions client
 			jig = newTestJig(f.FederationClientset.ExtensionsClient.RESTClient)
@@ -80,6 +80,7 @@ var _ = framework.KubeDescribe("[Feature:Federation]", func() {
 				framework.SkipUnlessFederated(f.Client)
 				framework.SkipUnlessProviderIs("gce", "gke")
 				By("Initializing gce controller")
+				//TODO: we do not need federation ingress controller, just check underlying k8s ingress objects are created
 				gceController = &GCEIngressController{ns: ns, Project: framework.TestContext.CloudConfig.ProjectID, c: jig.client}
 				gceController.init()
 			})
@@ -161,17 +162,6 @@ var _ = framework.KubeDescribe("[Feature:Federation]", func() {
    federated ingresss and the underlying cluster ingresss (e.g. ClusterIP, LoadBalancerIP etc) are ignored.
 */
 func equivalentIngress(federationIngress, clusterIngress extensions.Ingress) bool {
-	// TODO: how to decide two ingresses are equal?
-	clusterIngress.Spec = federationIngress.Spec
-	//clusterIngress.Spec.ExternalIPs = federationIngress.Spec.ExternalIPs
-	//clusterIngress.Spec.DeprecatedPublicIPs = federationIngress.Spec.DeprecatedPublicIPs
-	//clusterIngress.Spec.LoadBalancerIP = federationIngress.Spec.LoadBalancerIP
-	//clusterIngress.Spec.LoadBalancerSourceRanges = federationIngress.Spec.LoadBalancerSourceRanges
-	//// N.B. We cannot iterate over the port objects directly, as their values
-	//// only get copied and our updates will get lost.
-	//for i := range clusterIngress.Spec.Ports {
-	//	clusterIngress.Spec.Ports[i].NodePort = federationIngress.Spec.Ports[i].NodePort
-	//}
 	return reflect.DeepEqual(clusterIngress.Spec, federationIngress.Spec)
 }
 

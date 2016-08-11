@@ -320,29 +320,26 @@ func cleanupGCE(gceController *GCEIngressController) {
 	}
 }
 
-// Cleanup cleans up cloud resources.
-// If del is false, it simply reports existing resources without deleting them.
-// It always deletes resources created through it's methods, like staticIP, even
-// if del is false.
-func (cont *GCEIngressController) Cleanup(del bool) error {
-	errMsg := ""
-	// Ordering is important here because we cannot delete resources that other
-	// resources hold references to.
+func (cont *GCEIngressController) deleteForwardingRule(del bool) string {
+	msg := ""
 	fwList := []compute.ForwardingRule{}
 	for _, regex := range []string{fmt.Sprintf("k8s-fw-.*--%v", cont.UID), fmt.Sprintf("k8s-fws-.*--%v", cont.UID)} {
 		gcloudList("forwarding-rules", regex, cont.Project, &fwList)
 		if len(fwList) != 0 {
-			msg := ""
 			for _, f := range fwList {
 				msg += fmt.Sprintf("%v\n", f.Name)
 				if del {
 					gcloudDelete("forwarding-rules", f.Name, cont.Project, "--global")
 				}
 			}
-			errMsg += fmt.Sprintf("\nFound forwarding rules:\n%v", msg)
+			msg += fmt.Sprintf("\nFound forwarding rules:\n%v", msg)
 		}
 	}
-	// Static IPs are named after forwarding rules.
+	return msg
+}
+
+func (cont *GCEIngressController) deleteAddresses(del bool) string {
+	msg := ""
 	ipList := []compute.Address{}
 	gcloudList("addresses", fmt.Sprintf("k8s-fw-.*--%v", cont.UID), cont.Project, &ipList)
 	if len(ipList) != 0 {
@@ -353,16 +350,19 @@ func (cont *GCEIngressController) Cleanup(del bool) error {
 				gcloudDelete("addresses", ip.Name, cont.Project)
 			}
 		}
-		errMsg += fmt.Sprintf("Found addresses:\n%v", msg)
+		msg += fmt.Sprintf("Found addresses:\n%v", msg)
 	}
-
 	// If the test allocated a static ip, delete that regardless
 	if cont.staticIPName != "" {
 		if err := gcloudDelete("addresses", cont.staticIPName, cont.Project, "--global"); err == nil {
 			cont.staticIPName = ""
 		}
 	}
+	return msg
+}
 
+func (cont *GCEIngressController) deleteTargetProxy(del bool) string {
+	msg := ""
 	tpList := []compute.TargetHttpProxy{}
 	gcloudList("target-http-proxies", fmt.Sprintf("k8s-tp-.*--%v", cont.UID), cont.Project, &tpList)
 	if len(tpList) != 0 {
@@ -373,7 +373,7 @@ func (cont *GCEIngressController) Cleanup(del bool) error {
 				gcloudDelete("target-http-proxies", t.Name, cont.Project)
 			}
 		}
-		errMsg += fmt.Sprintf("Found target proxies:\n%v", msg)
+		msg += fmt.Sprintf("Found target proxies:\n%v", msg)
 	}
 	tpsList := []compute.TargetHttpsProxy{}
 	gcloudList("target-https-proxies", fmt.Sprintf("k8s-tps-.*--%v", cont.UID), cont.Project, &tpsList)
@@ -385,10 +385,13 @@ func (cont *GCEIngressController) Cleanup(del bool) error {
 				gcloudDelete("target-https-proxies", t.Name, cont.Project)
 			}
 		}
-		errMsg += fmt.Sprintf("Found target HTTPS proxies:\n%v", msg)
+		msg += fmt.Sprintf("Found target HTTPS proxies:\n%v", msg)
 	}
-	// TODO: Check for leaked ssl certs.
+	return msg
+}
 
+func (cont *GCEIngressController) deleteUrlMap(del bool) string {
+	msg := ""
 	umList := []compute.UrlMap{}
 	gcloudList("url-maps", fmt.Sprintf("k8s-um-.*--%v", cont.UID), cont.Project, &umList)
 	if len(umList) != 0 {
@@ -399,9 +402,13 @@ func (cont *GCEIngressController) Cleanup(del bool) error {
 				gcloudDelete("url-maps", u.Name, cont.Project)
 			}
 		}
-		errMsg += fmt.Sprintf("Found url maps:\n%v", msg)
+		msg += fmt.Sprintf("Found url maps:\n%v", msg)
 	}
+	return msg
+}
 
+func (cont *GCEIngressController) deleteBackendService(del bool) string {
+	msg := ""
 	beList := []compute.BackendService{}
 	gcloudList("backend-services", fmt.Sprintf("k8s-be-[0-9]+--%v", cont.UID), cont.Project, &beList)
 	if len(beList) != 0 {
@@ -412,9 +419,13 @@ func (cont *GCEIngressController) Cleanup(del bool) error {
 				gcloudDelete("backend-services", b.Name, cont.Project)
 			}
 		}
-		errMsg += fmt.Sprintf("Found backend services:\n%v", msg)
+		msg += fmt.Sprintf("Found backend services:\n%v", msg)
 	}
+	return msg
+}
 
+func (cont *GCEIngressController) deleteHttpHealthCheck(del bool) string {
+	msg := ""
 	hcList := []compute.HttpHealthCheck{}
 	gcloudList("http-health-checks", fmt.Sprintf("k8s-be-[0-9]+--%v", cont.UID), cont.Project, &hcList)
 	if len(hcList) != 0 {
@@ -425,8 +436,28 @@ func (cont *GCEIngressController) Cleanup(del bool) error {
 				gcloudDelete("http-health-checks", h.Name, cont.Project)
 			}
 		}
-		errMsg += fmt.Sprintf("Found health check:\n%v", msg)
+		msg += fmt.Sprintf("Found health check:\n%v", msg)
 	}
+	return msg
+}
+
+// Cleanup cleans up cloud resources.
+// If del is false, it simply reports existing resources without deleting them.
+// It always deletes resources created through it's methods, like staticIP, even
+// if del is false.
+func (cont *GCEIngressController) Cleanup(del bool) error {
+	// Ordering is important here because we cannot delete resources that other
+	// resources hold references to.
+	errMsg := cont.deleteForwardingRule(del)
+	// Static IPs are named after forwarding rules.
+	errMsg += cont.deleteAddresses(del)
+	// TODO: Check for leaked ssl certs.
+
+	errMsg += cont.deleteTargetProxy(del)
+	errMsg += cont.deleteUrlMap(del)
+	errMsg += cont.deleteBackendService(del)
+	errMsg += cont.deleteHttpHealthCheck(del)
+
 	// TODO: Verify instance-groups, issue #16636. Gcloud mysteriously barfs when told
 	// to unmarshal instance groups into the current vendored gce-client's understanding
 	// of the struct.

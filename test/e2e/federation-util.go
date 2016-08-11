@@ -38,6 +38,7 @@ var (
 	KubeAPIQPS            float32 = 20.0
 	KubeAPIBurst                  = 30
 	DefaultFederationName         = "federation"
+	UserAgentName                 = "federation-e2e"
 )
 
 /*
