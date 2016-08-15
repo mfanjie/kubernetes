@@ -19,7 +19,7 @@ package e2e
 import (
 	"fmt"
 
-	federationapi "k8s.io/kubernetes/federation/apis/federation"
+	federationapi "k8s.io/kubernetes/federation/apis/federation/v1beta1"
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/errors"
 	"k8s.io/kubernetes/pkg/api/v1"
@@ -55,7 +55,7 @@ type cluster struct {
 func createClusterObjectOrFail(f *framework.Framework, context *framework.E2EContext) {
 	framework.Logf("Creating cluster object: %s (%s, secret: %s)", context.Name, context.Cluster.Cluster.Server, context.Name)
 	cluster := federationapi.Cluster{
-		ObjectMeta: api.ObjectMeta{
+		ObjectMeta: v1.ObjectMeta{
 			Name: context.Name,
 		},
 		Spec: federationapi.ClusterSpec{
@@ -65,7 +65,7 @@ func createClusterObjectOrFail(f *framework.Framework, context *framework.E2ECon
 					ServerAddress: context.Cluster.Cluster.Server,
 				},
 			},
-			SecretRef: &api.LocalObjectReference{
+			SecretRef: &v1.LocalObjectReference{
 				// Note: Name must correlate with federation build script secret name,
 				//       which currently matches the cluster name.
 				//       See federation/cluster/common.sh:132
@@ -73,18 +73,18 @@ func createClusterObjectOrFail(f *framework.Framework, context *framework.E2ECon
 			},
 		},
 	}
-	_, err := f.FederationClientset.Federation().Clusters().Create(&cluster)
+	_, err := f.FederationClientset_1_4.Federation().Clusters().Create(&cluster)
 	framework.ExpectNoError(err, fmt.Sprintf("creating cluster: %+v", err))
 	framework.Logf("Successfully created cluster object: %s (%s, secret: %s)", context.Name, context.Cluster.Cluster.Server, context.Name)
 }
 
 func clusterIsReadyOrFail(f *framework.Framework, context *framework.E2EContext) {
-	c, err := f.FederationClientset.Federation().Clusters().Get(context.Name)
+	c, err := f.FederationClientset_1_4.Federation().Clusters().Get(context.Name)
 	framework.ExpectNoError(err, fmt.Sprintf("get cluster: %+v", err))
 	if c.ObjectMeta.Name != context.Name {
 		framework.Failf("cluster name does not match input context: actual=%+v, expected=%+v", c, context)
 	}
-	err = isReady(context.Name, f.FederationClientset)
+	err = isReady(context.Name, f.FederationClientset_1_4)
 	framework.ExpectNoError(err, fmt.Sprintf("unexpected error in verifying if cluster %s is ready: %+v", context.Name, err))
 	framework.Logf("Cluster %s is Ready", context.Name)
 }
@@ -93,7 +93,7 @@ func waitforclustersReadness(f *framework.Framework, clusterSize int) *federatio
 	var clusterList *federationapi.ClusterList
 	if err := wait.PollImmediate(framework.Poll, FederatedIngressTimeout, func() (bool, error) {
 		var err error
-		clusterList, err = f.FederationClientset.Federation().Clusters().List(api.ListOptions{})
+		clusterList, err = f.FederationClientset_1_4.Federation().Clusters().List(api.ListOptions{})
 		if err != nil {
 			return false, err
 		}
@@ -158,10 +158,10 @@ func unregisterClusters(clusters map[string]*cluster, f *framework.Framework) {
 	}
 
 	// Delete the registered clusters in the federation API server.
-	clusterList, err := f.FederationClientset.Federation().Clusters().List(api.ListOptions{})
+	clusterList, err := f.FederationClientset_1_4.Federation().Clusters().List(api.ListOptions{})
 	framework.ExpectNoError(err, "Error listing clusters")
 	for _, cluster := range clusterList.Items {
-		err := f.FederationClientset.Federation().Clusters().Delete(cluster.Name, &api.DeleteOptions{})
+		err := f.FederationClientset_1_4.Federation().Clusters().Delete(cluster.Name, &api.DeleteOptions{})
 		framework.ExpectNoError(err, "Error deleting cluster %q", cluster.Name)
 	}
 }

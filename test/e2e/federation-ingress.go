@@ -62,7 +62,7 @@ var _ = framework.KubeDescribe("Federation ingresses [Feature:Federation]", func
 			primaryClusterName = registerClusters(clusters, UserAgentName, federationName, f)
 
 			// TODO: require ingress to be supported by extensions client
-			jig = newTestJig(f.FederationClientset.ExtensionsClient.RESTClient)
+			jig = newTestJig(f.FederationClientset_1_4.ExtensionsClient.RESTClient)
 			ns = f.Namespace.Name
 		})
 

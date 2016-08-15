@@ -18,12 +18,7 @@ package e2e
 
 import (
 	"fmt"
-	"os"
-	"reflect"
-	"strconv"
-	"time"
-
-	"k8s.io/kubernetes/federation/client/clientset_generated/federation_release_1_3"
+	"k8s.io/kubernetes/federation/client/clientset_generated/federation_release_1_4"
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/errors"
 	"k8s.io/kubernetes/pkg/api/v1"
@@ -31,6 +26,10 @@ import (
 	"k8s.io/kubernetes/pkg/util/intstr"
 	"k8s.io/kubernetes/pkg/util/wait"
 	"k8s.io/kubernetes/test/e2e/framework"
+	"os"
+	"reflect"
+	"strconv"
+	"time"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -86,20 +85,20 @@ var _ = framework.KubeDescribe("[Feature:Federation]", func() {
 
 			It("should succeed", func() {
 				framework.SkipUnlessFederated(f.Client)
-				service := createServiceOrFail(f.FederationClientset_1_3, f.Namespace.Name)
+				service := createServiceOrFail(f.FederationClientset_1_4, f.Namespace.Name)
 				By(fmt.Sprintf("Creation of service %q in namespace %q succeeded.  Deleting service.", service.Name, f.Namespace.Name))
 				// Cleanup
-				err := f.FederationClientset_1_3.Services(f.Namespace.Name).Delete(service.Name, &api.DeleteOptions{})
+				err := f.FederationClientset_1_4.Services(f.Namespace.Name).Delete(service.Name, &api.DeleteOptions{})
 				framework.ExpectNoError(err, "Error deleting service %q in namespace %q", service.Name, service.Namespace)
 				By(fmt.Sprintf("Deletion of service %q in namespace %q succeeded.", service.Name, f.Namespace.Name))
 			})
 
 			It("should create matching services in underlying clusters", func() {
 				framework.SkipUnlessFederated(f.Client)
-				service := createServiceOrFail(f.FederationClientset_1_3, f.Namespace.Name)
+				service := createServiceOrFail(f.FederationClientset_1_4, f.Namespace.Name)
 				defer func() { // Cleanup
 					By(fmt.Sprintf("Deleting service %q in namespace %q", service.Name, f.Namespace.Name))
-					err := f.FederationClientset_1_3.Services(f.Namespace.Name).Delete(service.Name, &api.DeleteOptions{})
+					err := f.FederationClientset_1_4.Services(f.Namespace.Name).Delete(service.Name, &api.DeleteOptions{})
 					framework.ExpectNoError(err, "Error deleting service %q in namespace %q", service.Name, f.Namespace.Name)
 				}()
 				waitForServiceShardsOrFail(f.Namespace.Name, service, clusters)
@@ -115,7 +114,7 @@ var _ = framework.KubeDescribe("[Feature:Federation]", func() {
 			BeforeEach(func() {
 				framework.SkipUnlessFederated(f.Client)
 				createBackendPodsOrFail(clusters, f.Namespace.Name, FederatedServicePodName)
-				service = createServiceOrFail(f.FederationClientset_1_3, f.Namespace.Name)
+				service = createServiceOrFail(f.FederationClientset_1_4, f.Namespace.Name)
 				waitForServiceShardsOrFail(f.Namespace.Name, service, clusters)
 			})
 
@@ -124,7 +123,7 @@ var _ = framework.KubeDescribe("[Feature:Federation]", func() {
 				deleteBackendPodsOrFail(clusters, f.Namespace.Name)
 
 				if service != nil {
-					deleteServiceOrFail(f.FederationClientset_1_3, f.Namespace.Name, service.Name)
+					deleteServiceOrFail(f.FederationClientset_1_4, f.Namespace.Name, service.Name)
 					service = nil
 				} else {
 					By("No service to delete.  Service is nil")
@@ -247,7 +246,7 @@ func waitForServiceShardsOrFail(namespace string, service *v1.Service, clusters 
 	}
 }
 
-func createServiceOrFail(clientset *federation_release_1_3.Clientset, namespace string) *v1.Service {
+func createServiceOrFail(clientset *federation_release_1_4.Clientset, namespace string) *v1.Service {
 	if clientset == nil || len(namespace) == 0 {
 		Fail(fmt.Sprintf("Internal error: invalid parameters passed to deleteServiceOrFail: clientset: %v, namespace: %v", clientset, namespace))
 	}
@@ -276,7 +275,7 @@ func createServiceOrFail(clientset *federation_release_1_3.Clientset, namespace 
 	return service
 }
 
-func deleteServiceOrFail(clientset *federation_release_1_3.Clientset, namespace string, serviceName string) {
+func deleteServiceOrFail(clientset *federation_release_1_4.Clientset, namespace string, serviceName string) {
 	if clientset == nil || len(namespace) == 0 || len(serviceName) == 0 {
 		Fail(fmt.Sprintf("Internal error: invalid parameters passed to deleteServiceOrFail: clientset: %v, namespace: %v, service: %v", clientset, namespace, serviceName))
 	}
