@@ -137,7 +137,7 @@ var _ = framework.KubeDescribe("Federation ingresses [Feature:Federation]", func
 				framework.SkipUnlessFederated(f.Client)
 				deleteBackendPodsOrFail(clusters, f.Namespace.Name)
 				if service != nil {
-					deleteServiceOrFail(f.FederationClientset_1_4, f.Namespace.Name, ingress.Name)
+					deleteServiceOrFail(f.FederationClientset_1_4, f.Namespace.Name, service.Name)
 					service = nil
 				} else {
 					By("No service to delete. Service is nil")
@@ -150,22 +150,22 @@ var _ = framework.KubeDescribe("Federation ingresses [Feature:Federation]", func
 				}
 			})
 
-			It("should be able to discover a federated ingress", func() {
+			It("should be able to discover a federated ingress service", func() {
 				framework.SkipUnlessFederated(f.Client)
 				// we are about the ingress name
 				svcDNSNames := []string{
-					FederatedIngressName,
-					fmt.Sprintf("%s.%s", FederatedIngressName, f.Namespace.Name),
-					fmt.Sprintf("%s.%s.svc.cluster.local.", FederatedIngressName, f.Namespace.Name),
-					fmt.Sprintf("%s.%s.%s", FederatedIngressName, f.Namespace.Name, federationName),
-					fmt.Sprintf("%s.%s.%s.svc.cluster.local.", FederatedIngressName, f.Namespace.Name, federationName),
+					FederatedIngressServiceName,
+					fmt.Sprintf("%s.%s", FederatedIngressServiceName, f.Namespace.Name),
+					fmt.Sprintf("%s.%s.svc.cluster.local.", FederatedIngressServiceName, f.Namespace.Name),
+					fmt.Sprintf("%s.%s.%s", FederatedIngressServiceName, f.Namespace.Name, federationName),
+					fmt.Sprintf("%s.%s.%s.svc.cluster.local.", FederatedIngressServiceName, f.Namespace.Name, federationName),
 				}
 				for i, DNSName := range svcDNSNames {
 					discoverService(f, DNSName, true, "federated-ingress-e2e-discovery-pod-"+strconv.Itoa(i))
 				}
 			})
 
-			Context("non-local federated ingress", func() {
+			Context("non-local federated ingress service", func() {
 				BeforeEach(func() {
 					framework.SkipUnlessFederated(f.Client)
 
@@ -178,8 +178,8 @@ var _ = framework.KubeDescribe("Federation ingresses [Feature:Federation]", func
 					framework.SkipUnlessFederated(f.Client)
 
 					svcDNSNames := []string{
-						fmt.Sprintf("%s.%s.%s", FederatedIngressName, f.Namespace.Name, federationName),
-						fmt.Sprintf("%s.%s.%s.svc.cluster.local.", FederatedIngressName, f.Namespace.Name, federationName),
+						fmt.Sprintf("%s.%s.%s", FederatedIngressServiceName, f.Namespace.Name, federationName),
+						fmt.Sprintf("%s.%s.%s.svc.cluster.local.", FederatedIngressServiceName, f.Namespace.Name, federationName),
 					}
 					for i, name := range svcDNSNames {
 						discoverService(f, name, true, "federated-ingress-e2e-discovery-pod-"+strconv.Itoa(i))
@@ -193,9 +193,9 @@ var _ = framework.KubeDescribe("Federation ingresses [Feature:Federation]", func
 						framework.SkipUnlessFederated(f.Client)
 
 						localSvcDNSNames := []string{
-							FederatedIngressName,
-							fmt.Sprintf("%s.%s", FederatedIngressName, f.Namespace.Name),
-							fmt.Sprintf("%s.%s.svc.cluster.local.", FederatedIngressName, f.Namespace.Name),
+							FederatedIngressServiceName,
+							fmt.Sprintf("%s.%s", FederatedIngressServiceName, f.Namespace.Name),
+							fmt.Sprintf("%s.%s.svc.cluster.local.", FederatedIngressServiceName, f.Namespace.Name),
 						}
 						for i, name := range localSvcDNSNames {
 							discoverService(f, name, false, "federated-ingress-e2e-discovery-pod-"+strconv.Itoa(i))
@@ -314,7 +314,7 @@ func createIngressOrFail(clientset *federation_release_1_4.Clientset, namespace 
 		},
 		Spec: v1beta1.IngressSpec{
 			Backend: &v1beta1.IngressBackend{
-				ServiceName: "testingress",
+				ServiceName: "testingress-service",
 				ServicePort: intstr.FromInt(80),
 			},
 		},
@@ -337,7 +337,7 @@ func updateIngressOrFail(clientset *federation_release_1_4.Clientset, namespace 
 		},
 		Spec: v1beta1.IngressSpec{
 			Backend: &v1beta1.IngressBackend{
-				ServiceName: "updated_testingress",
+				ServiceName: "updated-testingress-service",
 				ServicePort: intstr.FromInt(80),
 			},
 		},
