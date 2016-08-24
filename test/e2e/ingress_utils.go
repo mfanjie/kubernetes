@@ -287,7 +287,7 @@ func createSecret(client *restclient.RESTClient, ing *extensions.Ingress) (host 
 		_, err = client.Put().Namespace(ing.Namespace).Resource("secret").Name(tls.SecretName).Body(s).Do().Error()
 	} else {
 		framework.Logf("Creating secret %v in ns %v with hosts %v for ingress %v", secret.Name, secret.Namespace, host, ing.Name)
-		_, err = client.Post().Namespace(ns).Resource("secret").Body(secret).Do().Error()
+		_, err = client.Post().Namespace(ing.Namespace).Resource("secret").Body(secret).Do().Error()
 	}
 	return host, cert, key, err
 }
@@ -563,7 +563,7 @@ func (j *testJig) createIngress(manifestPath, ns string, ingAnnotations map[stri
 	}
 	framework.Logf(fmt.Sprintf("creating" + j.ing.Name + " ingress"))
 	var err error
-	err = j.client.Post().Namespace(ns).Resource("ingress").Body(j.ing).Do().Into(j.ing)
+	err = j.client.Post().Namespace(ns).Resource("ingresses").Body(j.ing).Do().Into(j.ing)
 	ExpectNoError(err)
 }
 
@@ -571,12 +571,12 @@ func (j *testJig) update(update func(ing *extensions.Ingress)) {
 	var err error
 	ns, name := j.ing.Namespace, j.ing.Name
 	for i := 0; i < 3; i++ {
-		j.ing, err = j.client.Get().Namespace(ns).Resource("ingress").Name(name).Do().Get()
+		j.ing, err = j.client.Get().Namespace(ns).Resource("ingresses").Name(name).Do().Get()
 		if err != nil {
 			framework.Failf("failed to get ingress %q: %v", name, err)
 		}
 		update(j.ing)
-		err = j.client.Put().Namespace(ns).Resource("ingress").Name(name).Body(j.ing).Do().Error()
+		err = j.client.Put().Namespace(ns).Resource("ingresses").Name(name).Body(j.ing).Do().Error()
 		if err == nil {
 			describeIng(j.ing.Namespace)
 			return
@@ -611,7 +611,7 @@ func (j *testJig) getRootCA(secretName string) (rootCA []byte) {
 }
 
 func (j *testJig) deleteIngress() {
-	ExpectNoError(j.client.Delete().Namespace(j.ing.Namespace).Resource("ingress").Name(j.ing.Name).Do().Error())
+	ExpectNoError(j.client.Delete().Namespace(j.ing.Namespace).Resource("ingresses").Name(j.ing.Name).Do().Error())
 }
 
 func (j *testJig) waitForIngress() {
