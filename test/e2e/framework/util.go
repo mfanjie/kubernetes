@@ -4210,8 +4210,8 @@ func OpenWebSocketForURL(url *url.URL, config *restclient.Config, protocols []st
 }
 
 // getIngressAddress returns the ips/hostnames associated with the Ingress.
-func getIngressAddress(client *client.Client, ns, name string) ([]string, error) {
-	ing, err := client.Extensions().Ingress(ns).Get(name)
+func getIngressAddress(client *restclient.RESTClient, ns, name string) ([]string, error) {
+	ing, err := client.Get().Namespace(ns).Resource("ingress").Name(name).Do().Get()
 	if err != nil {
 		return nil, err
 	}
@@ -4228,7 +4228,7 @@ func getIngressAddress(client *client.Client, ns, name string) ([]string, error)
 }
 
 // WaitForIngressAddress waits for the Ingress to acquire an address.
-func WaitForIngressAddress(c *client.Client, ns, ingName string, timeout time.Duration) (string, error) {
+func WaitForIngressAddress(c *restclient.RESTClient, ns, ingName string, timeout time.Duration) (string, error) {
 	var address string
 	err := wait.PollImmediate(10*time.Second, timeout, func() (bool, error) {
 		ipOrNameList, err := getIngressAddress(c, ns, ingName)

@@ -50,6 +50,8 @@ var _ = framework.KubeDescribe("Federation ingresses [Feature:Federation]", func
 	var (
 		clusters                               map[string]*cluster // All clusters, keyed by cluster name
 		primaryClusterName, federationName, ns string
+		jig                                    *testJig
+		conformanceTests                       []conformanceTests
 	)
 
 	f := framework.NewDefaultFederatedFramework("federated-ingress")
@@ -62,6 +64,7 @@ var _ = framework.KubeDescribe("Federation ingresses [Feature:Federation]", func
 			if federationName = os.Getenv("FEDERATION_NAME"); federationName == "" {
 				federationName = DefaultFederationName
 			}
+			jig = newTestJig(f.Client.RESTClient)
 			clusters = map[string]*cluster{}
 			primaryClusterName = registerClusters(clusters, UserAgentName, federationName, f)
 			ns = f.Namespace.Name
@@ -110,6 +113,17 @@ var _ = framework.KubeDescribe("Federation ingresses [Feature:Federation]", func
 				ingress = updateIngressOrFail(f.FederationClientset_1_4, f.Namespace.Name)
 				waitForIngressShardsUpdatedOrFail(f.Namespace.Name, ingress, clusters)
 			})
+
+		})
+
+		It("should conform to Ingress spec", func() {
+			conformanceTests = createComformanceTests(jig, ns)
+			for _, t := range conformanceTests {
+				By(t.entryLog)
+				t.execute()
+				By(t.exitLog)
+				jig.waitForIngress()
+			}
 		})
 
 		var _ = Describe("DNS", func() {
@@ -150,7 +164,7 @@ var _ = framework.KubeDescribe("Federation ingresses [Feature:Federation]", func
 				}
 			})
 
-			It("should be able to discover a federated ingress service", func() {
+			PIt("should be able to discover a federated ingress service", func() {
 				framework.SkipUnlessFederated(f.Client)
 				// we are about the ingress name
 				svcDNSNames := []string{
@@ -174,7 +188,7 @@ var _ = framework.KubeDescribe("Federation ingresses [Feature:Federation]", func
 
 				})
 
-				It("should be able to discover a non-local federated ingress", func() {
+				PIt("should be able to discover a non-local federated ingress", func() {
 					framework.SkipUnlessFederated(f.Client)
 
 					svcDNSNames := []string{
@@ -186,8 +200,6 @@ var _ = framework.KubeDescribe("Federation ingresses [Feature:Federation]", func
 					}
 				})
 
-				// TODO(mml): This currently takes 9 minutes.  Consider reducing the
-				// TTL and/or running the pods in parallel.
 				Context("[Slow] missing local ingress", func() {
 					It("should never find DNS entries for a missing local ingress", func() {
 						framework.SkipUnlessFederated(f.Client)

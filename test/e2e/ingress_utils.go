@@ -42,6 +42,7 @@ import (
 	compute "google.golang.org/api/compute/v1"
 	apierrs "k8s.io/kubernetes/pkg/api/errors"
 	"k8s.io/kubernetes/pkg/apis/extensions"
+	"k8s.io/kubernetes/pkg/client/restclient"
 	client "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/runtime"
 	utilexec "k8s.io/kubernetes/pkg/util/exec"
@@ -61,7 +62,7 @@ const (
 )
 
 type testJig struct {
-	client  *client.Client
+	client  *restclient.RESTClient
 	rootCAs map[string][]byte
 	address string
 	ing     *extensions.Ingress
@@ -258,7 +259,7 @@ func buildInsecureClient(timeout time.Duration) *http.Client {
 // createSecret creates a secret containing TLS certificates for the given Ingress.
 // If a secret with the same name already exists in the namespace of the
 // Ingress, it's updated.
-func createSecret(kubeClient *client.Client, ing *extensions.Ingress) (host string, rootCA, privKey []byte, err error) {
+func createSecret(client *restclient.RESTClient, ing *extensions.Ingress) (host string, rootCA, privKey []byte, err error) {
 	var k, c bytes.Buffer
 	tls := ing.Spec.TLS[0]
 	host = strings.Join(tls.Hosts, ",")
@@ -279,14 +280,14 @@ func createSecret(kubeClient *client.Client, ing *extensions.Ingress) (host stri
 		},
 	}
 	var s *api.Secret
-	if s, err = kubeClient.Secrets(ing.Namespace).Get(tls.SecretName); err == nil {
+	if s, err = client.Get().Namespace(ing.Namespace).Resource("secret").Name(tls.SecretName).Do().Get(); err == nil {
 		// TODO: Retry the update. We don't really expect anything to conflict though.
 		framework.Logf("Updating secret %v in ns %v with hosts %v for ingress %v", secret.Name, secret.Namespace, host, ing.Name)
 		s.Data = secret.Data
-		_, err = kubeClient.Secrets(ing.Namespace).Update(s)
+		_, err = client.Put().Namespace(ing.Namespace).Resource("secret").Name(tls.SecretName).Body(s).Do().Error()
 	} else {
 		framework.Logf("Creating secret %v in ns %v with hosts %v for ingress %v", secret.Name, secret.Namespace, host, ing.Name)
-		_, err = kubeClient.Secrets(ing.Namespace).Create(secret)
+		_, err = client.Post().Namespace(ns).Resource("secret").Body(secret).Do().Error()
 	}
 	return host, cert, key, err
 }
@@ -562,7 +563,7 @@ func (j *testJig) createIngress(manifestPath, ns string, ingAnnotations map[stri
 	}
 	framework.Logf(fmt.Sprintf("creating" + j.ing.Name + " ingress"))
 	var err error
-	j.ing, err = j.client.Extensions().Ingress(ns).Create(j.ing)
+	err = j.client.Post().Namespace(ns).Resource("ingress").Body(j.ing).Do().Into(j.ing)
 	ExpectNoError(err)
 }
 
@@ -570,12 +571,12 @@ func (j *testJig) update(update func(ing *extensions.Ingress)) {
 	var err error
 	ns, name := j.ing.Namespace, j.ing.Name
 	for i := 0; i < 3; i++ {
-		j.ing, err = j.client.Extensions().Ingress(ns).Get(name)
+		j.ing, err = j.client.Get().Namespace(ns).Resource("ingress").Name(name).Do().Get()
 		if err != nil {
 			framework.Failf("failed to get ingress %q: %v", name, err)
 		}
 		update(j.ing)
-		j.ing, err = j.client.Extensions().Ingress(ns).Update(j.ing)
+		err = j.client.Put().Namespace(ns).Resource("ingress").Name(name).Body(j.ing).Do().Error()
 		if err == nil {
 			describeIng(j.ing.Namespace)
 			return
@@ -610,7 +611,7 @@ func (j *testJig) getRootCA(secretName string) (rootCA []byte) {
 }
 
 func (j *testJig) deleteIngress() {
-	ExpectNoError(j.client.Extensions().Ingress(j.ing.Namespace).Delete(j.ing.Name, nil))
+	ExpectNoError(j.client.Delete().Namespace(j.ing.Namespace).Resource("ingress").Name(j.ing.Name).Do().Error())
 }
 
 func (j *testJig) waitForIngress() {
@@ -715,6 +716,6 @@ type GCEIngressController struct {
 	c            *client.Client
 }
 
-func newTestJig(c *client.Client) *testJig {
+func newTestJig(c *restclient.RESTClient) *testJig {
 	return &testJig{client: c, rootCAs: map[string][]byte{}}
 }
