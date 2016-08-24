@@ -279,15 +279,15 @@ func createSecret(client *restclient.RESTClient, ing *extensions.Ingress) (host 
 			api.TLSPrivateKeyKey: key,
 		},
 	}
-	var s *api.Secret
-	if s, err = client.Get().Namespace(ing.Namespace).Resource("secret").Name(tls.SecretName).Do().Get(); err == nil {
+	if result, err := client.Get().Namespace(ing.Namespace).Resource("secret").Name(tls.SecretName).Do().Get(); err == nil {
 		// TODO: Retry the update. We don't really expect anything to conflict though.
+		s := result.(*api.Secret)
 		framework.Logf("Updating secret %v in ns %v with hosts %v for ingress %v", secret.Name, secret.Namespace, host, ing.Name)
 		s.Data = secret.Data
-		_, err = client.Put().Namespace(ing.Namespace).Resource("secret").Name(tls.SecretName).Body(s).Do().Error()
+		err = client.Put().Namespace(ing.Namespace).Resource("secret").Name(tls.SecretName).Body(s).Do().Error()
 	} else {
 		framework.Logf("Creating secret %v in ns %v with hosts %v for ingress %v", secret.Name, secret.Namespace, host, ing.Name)
-		_, err = client.Post().Namespace(ing.Namespace).Resource("secret").Body(secret).Do().Error()
+		err = client.Post().Namespace(ing.Namespace).Resource("secret").Body(secret).Do().Error()
 	}
 	return host, cert, key, err
 }
@@ -568,13 +568,13 @@ func (j *testJig) createIngress(manifestPath, ns string, ingAnnotations map[stri
 }
 
 func (j *testJig) update(update func(ing *extensions.Ingress)) {
-	var err error
 	ns, name := j.ing.Namespace, j.ing.Name
 	for i := 0; i < 3; i++ {
-		j.ing, err = j.client.Get().Namespace(ns).Resource("ingresses").Name(name).Do().Get()
+		result, err := j.client.Get().Namespace(ns).Resource("ingresses").Name(name).Do().Get()
 		if err != nil {
 			framework.Failf("failed to get ingress %q: %v", name, err)
 		}
+		j.ing = result.(*extensions.Ingress)
 		update(j.ing)
 		err = j.client.Put().Namespace(ns).Resource("ingresses").Name(name).Body(j.ing).Do().Error()
 		if err == nil {
@@ -682,10 +682,11 @@ func ingFromManifest(fileName string) *extensions.Ingress {
 
 func (cont *GCEIngressController) getL7AddonUID() (string, error) {
 	framework.Logf("Retrieving UID from config map: %v/%v", api.NamespaceSystem, uidConfigMap)
-	cm, err := cont.c.ConfigMaps(api.NamespaceSystem).Get(uidConfigMap)
+	result, err := cont.c.Get().Namespace(api.NamespaceSystem).Resource("configmaps").Name(uidConfigMap).Do().Get()
 	if err != nil {
 		return "", err
 	}
+	cm := result.(*api.ConfigMap)
 	if uid, ok := cm.Data[uidKey]; ok {
 		return uid, nil
 	}
@@ -713,7 +714,7 @@ type GCEIngressController struct {
 	staticIPName string
 	rc           *api.ReplicationController
 	svc          *api.Service
-	c            *client.Client
+	c            *restclient.RESTClient
 }
 
 func newTestJig(c *restclient.RESTClient) *testJig {
